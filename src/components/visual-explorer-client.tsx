@@ -6,7 +6,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import BottomNav from './bottom-nav';
 import GridView from './grid-view';
 import ExploreOverlay from './explore-overlay';
-import { getSpherePoints, getNamePoints, getGridPoints } from '@/lib/three-helpers';
+import { getSpherePoints, getNamePoints } from '@/lib/three-helpers';
 import { Loader } from 'lucide-react';
 
 type Mode = 'grid' | 'sphere' | 'name';
@@ -16,7 +16,7 @@ type ThreeObjects = {
   camera: THREE.PerspectiveCamera;
   renderer: THREE.WebGLRenderer;
   controls: OrbitControls;
-  imageMeshes: THREE.Mesh[];
+  imageMeshes: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>[];
   raycaster: THREE.Raycaster;
   mouse: THREE.Vector2;
 };
@@ -102,7 +102,8 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
 
   const onImageSelect = (index: number) => {
     if(mode === 'grid') {
-      handleModeChange('sphere');
+      setShow3D(true);
+      setMode('sphere');
     }
     setPrevMode(mode === 'grid' ? 'sphere' : mode);
     setSelectedImageIndex(index);
@@ -120,6 +121,9 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
 
   const closeExplore = () => {
     setSelectedImageIndex(null);
+    if(prevMode === 'grid') {
+      setShow3D(false);
+    }
     setMode(prevMode);
   };
 
@@ -127,11 +131,13 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
     if (!containerRef.current || !show3D) return;
     const container = containerRef.current;
 
-    // If a renderer already exists, just return.
-    if (container.querySelector('canvas')) {
+    if (threeRef.current) {
+        if(threeRef.current.renderer.domElement.parentNode !== container) {
+            container.appendChild(threeRef.current.renderer.domElement);
+        }
         return;
     }
-
+    
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
     camera.position.z = 25;
@@ -151,7 +157,7 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
     const mouse = new THREE.Vector2();
 
     const loader = new THREE.TextureLoader();
-    const imageMeshes: THREE.Mesh[] = [];
+    const imageMeshes: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>[] = [];
 
     let loadedCount = 0;
     images.forEach((image, index) => {
@@ -168,9 +174,6 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
         loadedCount++;
         if (loadedCount === images.length) {
             setIsLoading(false);
-            // This was set to 'sphere', but it's better to respect the current mode
-            // in case the user switches tabs quickly.
-            // setMode('sphere');
         }
       });
     });
@@ -208,10 +211,9 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
     return () => {
       window.removeEventListener('resize', onWindowResize);
       container.removeEventListener('click', onClick);
-      if(renderer.domElement.parentNode === container) {
-        container.removeChild(renderer.domElement);
+      if(threeRef.current && threeRef.current.renderer.domElement.parentNode === container) {
+        container.removeChild(threeRef.current.renderer.domElement);
       }
-      threeRef.current = undefined;
     };
   }, [images, show3D]);
 
@@ -219,6 +221,10 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
     let cleanup: (() => void) | undefined;
     if (show3D) {
         cleanup = setupScene();
+    } else {
+        if (threeRef.current?.renderer.domElement.parentNode) {
+            threeRef.current.renderer.domElement.parentNode.removeChild(threeRef.current.renderer.domElement)
+        }
     }
     
     return () => {
@@ -231,6 +237,8 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
     animationFrameId.current = requestAnimationFrame(animate);
     if (!threeRef.current) return;
     const { renderer, scene, camera, controls, imageMeshes } = threeRef.current;
+
+    TWEEN.update(performance.now());
 
     if (imageMeshes.length === images.length) {
       imageMeshes.forEach((mesh, index) => {
@@ -270,6 +278,7 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
     
     if (selectedImageIndex !== null) {
       const selectedMesh = threeRef.current.imageMeshes[selectedImageIndex];
+      if (!selectedMesh) return;
       const camPos = selectedMesh.position.clone().add(new THREE.Vector3(0, 0, IMAGE_SIZE * 2));
       
       const newTargetPositions: THREE.Vector3[] = [];
@@ -277,19 +286,20 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
 
       images.forEach((_, i) => {
         const mesh = threeRef.current!.imageMeshes[i];
-        if (i === selectedImageIndex) {
-          newTargetPositions[i] = selectedMesh.position.clone();
-          newTargetQuaternions[i] = new THREE.Quaternion().setFromEuler(new THREE.Euler(0,0,0));
-        } else {
-          newTargetPositions[i] = mesh.position.clone();
-          newTargetQuaternions[i] = mesh.quaternion.clone();
+        if(mesh) {
+            if (i === selectedImageIndex) {
+                newTargetPositions[i] = selectedMesh.position.clone();
+                newTargetQuaternions[i] = new THREE.Quaternion().setFromEuler(new THREE.Euler(0,0,0));
+            } else {
+                newTargetPositions[i] = mesh.position.clone();
+                newTargetQuaternions[i] = mesh.quaternion.clone();
+            }
+            mesh.material.opacity = i === selectedImageIndex ? 1 : 0;
         }
-        mesh.material.opacity = i === selectedImageIndex ? 1 : 0;
       });
       targetPositions.current = newTargetPositions;
       targetQuaternions.current = newTargetQuaternions;
 
-      // animate camera to position
       new TWEEN.Tween(camera.position)
         .to(camPos, 500)
         .easing(TWEEN.Easing.Quadratic.Out)
@@ -298,12 +308,6 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
         .to(selectedMesh.position, 500)
         .easing(TWEEN.Easing.Quadratic.Out)
         .start();
-
-      const animateTWEEN = (time: number) => {
-        requestAnimationFrame(animateTWEEN);
-        TWEEN.update(time);
-      }
-      requestAnimationFrame(animateTWEEN);
 
       controls.enabled = false;
 
@@ -321,8 +325,7 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
           points = getNamePoints(images.length);
           break;
         case 'grid':
-          // This case should not be hit if show3D is true
-          break;
+          return;
       }
       targetPositions.current = points;
       const cameraQuaternion = camera.quaternion.clone();
