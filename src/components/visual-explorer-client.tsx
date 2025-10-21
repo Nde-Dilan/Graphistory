@@ -21,9 +21,6 @@ type ThreeObjects = {
   mouse: THREE.Vector2;
 };
 
-const IMAGE_SIZE = 2;
-const TRANSITION_SPEED = 0.07;
-
 // Polyfill for TWEEN
 const TWEEN = {
     Easing: { Quadratic: { Out: (k: number) => k * ( 2 - k ) } },
@@ -49,6 +46,7 @@ const TWEEN = {
         let _duration = 1000;
         let _easingFunction = TWEEN.Easing.Quadratic.Out;
         let _startTime = 0;
+        let _onCompleteCallback: (()=>void)|null = null;
 
         this.to = function(properties: any, duration: number) {
             _valuesEnd = properties;
@@ -57,7 +55,7 @@ const TWEEN = {
         };
         this.start = function(time?: number) {
             TWEEN.add(this);
-            _startTime = time !== undefined ? time : Date.now();
+            _startTime = time !== undefined ? time : performance.now();
             for (var property in _valuesEnd) {
                 if (_object[property] === undefined) continue;
                 _valuesStart[property] = _object[property];
@@ -68,6 +66,10 @@ const TWEEN = {
             _easingFunction = easing;
             return this;
         };
+        this.onComplete = function (callback: ()=>void) {
+            _onCompleteCallback = callback;
+            return this;
+        }
         this.update = function(time: number) {
             let elapsed = (time - _startTime) / _duration;
             elapsed = elapsed > 1 ? 1 : elapsed;
@@ -81,11 +83,19 @@ const TWEEN = {
                     _object[property] = start + (end - start) * value;
                 }
             }
-            if (elapsed === 1) return false;
+            if (elapsed === 1) {
+                if (_onCompleteCallback !== null) {
+                    _onCompleteCallback();
+                }
+                return false;
+            }
             return true;
         };
     }
 };
+
+const IMAGE_SIZE = 2;
+const TRANSITION_SPEED = 0.07;
 
 export default function VisualExplorerClient({ images }: { images: ImagePlaceholder[] }) {
   const [mode, setMode] = useState<Mode>('sphere');
@@ -101,39 +111,41 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
   const targetQuaternions = useRef<THREE.Quaternion[]>([]);
 
   const onImageSelect = (index: number) => {
-    if(mode === 'grid') {
-      setShow3D(true);
-      setMode('sphere');
-    }
-    setPrevMode(mode === 'grid' ? 'sphere' : mode);
+    setPrevMode(mode);
     setSelectedImageIndex(index);
+    if(mode === 'grid') {
+      // Switch from grid to 3d view when an image is selected
+      handleModeChange('sphere');
+    }
   };
   
   const handleModeChange = (newMode: Mode) => {
+    setMode(newMode);
     if (newMode === 'grid') {
       setShow3D(false);
     } else {
       setShow3D(true);
     }
-    setMode(newMode);
-    setSelectedImageIndex(null);
   };
 
   const closeExplore = () => {
+    const lastMode = prevMode;
     setSelectedImageIndex(null);
-    if(prevMode === 'grid') {
+    setMode(lastMode);
+    if (lastMode === 'grid') {
       setShow3D(false);
     }
-    setMode(prevMode);
   };
 
   const setupScene = useCallback(() => {
     if (!containerRef.current || !show3D) return;
     const container = containerRef.current;
 
+    // If scene exists, just re-append it
     if (threeRef.current) {
         if(threeRef.current.renderer.domElement.parentNode !== container) {
             container.appendChild(threeRef.current.renderer.domElement);
+            onWindowResize(); // Recalculate size
         }
         return;
     }
@@ -189,7 +201,7 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
     };
 
     const onClick = (event: MouseEvent) => {
-        if (!threeRef.current || !containerRef.current) return;
+        if (!threeRef.current || !containerRef.current || selectedImageIndex !== null) return;
         const { camera, imageMeshes, raycaster, mouse } = threeRef.current;
         const rect = containerRef.current.getBoundingClientRect();
 
@@ -211,36 +223,30 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
     return () => {
       window.removeEventListener('resize', onWindowResize);
       container.removeEventListener('click', onClick);
-      if(threeRef.current && threeRef.current.renderer.domElement.parentNode === container) {
-        container.removeChild(threeRef.current.renderer.domElement);
-      }
     };
-  }, [images, show3D]);
+  }, [images, show3D, selectedImageIndex]);
 
   useEffect(() => {
     let cleanup: (() => void) | undefined;
-    if (show3D) {
+    if (show3D && !isLoading) {
         cleanup = setupScene();
-    } else {
-        if (threeRef.current?.renderer.domElement.parentNode) {
-            threeRef.current.renderer.domElement.parentNode.removeChild(threeRef.current.renderer.domElement)
-        }
+    } else if (threeRef.current?.renderer.domElement.parentNode) {
+        threeRef.current.renderer.domElement.parentNode.removeChild(threeRef.current.renderer.domElement)
     }
     
     return () => {
-        if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
         if (cleanup) cleanup();
     }
-  }, [setupScene, show3D]);
+  }, [setupScene, show3D, isLoading]);
 
   const animate = useCallback(() => {
     animationFrameId.current = requestAnimationFrame(animate);
-    if (!threeRef.current) return;
+    if (!threeRef.current || !show3D) return;
     const { renderer, scene, camera, controls, imageMeshes } = threeRef.current;
 
     TWEEN.update(performance.now());
 
-    if (imageMeshes.length === images.length) {
+    if (imageMeshes.length === images.length && selectedImageIndex === null) {
       imageMeshes.forEach((mesh, index) => {
         if (!mesh) return;
         
@@ -258,7 +264,7 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
 
     controls.update();
     renderer.render(scene, camera);
-  }, [images.length]);
+  }, [images.length, show3D, selectedImageIndex]);
 
   useEffect(() => {
     if (show3D) {
@@ -279,26 +285,15 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
     if (selectedImageIndex !== null) {
       const selectedMesh = threeRef.current.imageMeshes[selectedImageIndex];
       if (!selectedMesh) return;
-      const camPos = selectedMesh.position.clone().add(new THREE.Vector3(0, 0, IMAGE_SIZE * 2));
+      const camPos = selectedMesh.position.clone().add(new THREE.Vector3(0, 0, IMAGE_SIZE * 3));
       
-      const newTargetPositions: THREE.Vector3[] = [];
-      const newTargetQuaternions: THREE.Quaternion[] = [];
-
-      images.forEach((_, i) => {
-        const mesh = threeRef.current!.imageMeshes[i];
-        if(mesh) {
-            if (i === selectedImageIndex) {
-                newTargetPositions[i] = selectedMesh.position.clone();
-                newTargetQuaternions[i] = new THREE.Quaternion().setFromEuler(new THREE.Euler(0,0,0));
-            } else {
-                newTargetPositions[i] = mesh.position.clone();
-                newTargetQuaternions[i] = mesh.quaternion.clone();
-            }
-            mesh.material.opacity = i === selectedImageIndex ? 1 : 0;
+      threeRef.current.imageMeshes.forEach((mesh, i) => {
+        if (mesh) {
+            new TWEEN.Tween(mesh.material)
+              .to({ opacity: i === selectedImageIndex ? 1 : 0 }, 500)
+              .start();
         }
       });
-      targetPositions.current = newTargetPositions;
-      targetQuaternions.current = newTargetQuaternions;
 
       new TWEEN.Tween(camera.position)
         .to(camPos, 500)
@@ -311,10 +306,12 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
 
       controls.enabled = false;
 
-    } else {
+    } else { // This block runs when closing the detail view
       controls.enabled = true;
       threeRef.current.imageMeshes.forEach(mesh => {
-        if (mesh) mesh.material.opacity = 1;
+        if (mesh) {
+           new TWEEN.Tween(mesh.material).to({ opacity: 1 }, 500).start();
+        }
       });
 
       switch (mode) {
@@ -325,6 +322,7 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
           points = getNamePoints(images.length);
           break;
         case 'grid':
+          // This case is handled by show3D state, but we return to prevent further processing
           return;
       }
       targetPositions.current = points;
@@ -336,17 +334,17 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
 
   return (
     <>
-      <div className={`absolute inset-0 transition-opacity duration-500 ${show3D ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} ref={containerRef} />
+      <div className={`absolute inset-0 transition-opacity duration-500 ${show3D && !isLoading ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} ref={containerRef} />
       
       {isLoading && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 z-20">
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 z-30">
               <Loader className="w-12 h-12 animate-spin text-primary" />
               <p className="mt-4 text-lg font-headline text-foreground">Loading Visual Explorer...</p>
           </div>
       )}
 
-      <div className={`absolute inset-0 transition-opacity duration-500 ${!show3D ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-        {!isLoading && mode === 'grid' && (
+      <div className={`absolute inset-0 transition-opacity duration-500 ${!show3D && !isLoading ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+        {mode === 'grid' && (
             <GridView images={images} onImageSelect={onImageSelect} />
         )}
       </div>
