@@ -1,6 +1,6 @@
 'use client';
-import type { ImagePlaceholder } from '@/lib/placeholder-images';
-import { useState, useRef, useEffect, useCallback } from 'react';
+import type { CameroonEvent, CameroonHistoryLink } from '@/lib/cameroon-history-data';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import BottomNav from './bottom-nav';
@@ -16,9 +16,11 @@ type ThreeObjects = {
   camera: THREE.PerspectiveCamera;
   renderer: THREE.WebGLRenderer;
   controls: OrbitControls;
-  imageMeshes: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>[];
+  imageMeshes: THREE.Mesh[];
+  linkLines: THREE.Line[];
   raycaster: THREE.Raycaster;
   mouse: THREE.Vector2;
+  hoveredMesh: THREE.Mesh | null;
 };
 
 const TWEEN = {
@@ -57,7 +59,7 @@ const TWEEN = {
             _startTime = time !== undefined ? time : performance.now();
             for (var property in _valuesEnd) {
                 if (_object[property] === undefined) continue;
-                _valuesStart[property] = _object[property];
+                _valuesStart[property] = _object[property] instanceof THREE.Color ? _object[property].clone() : _object[property];
             }
             return this;
         };
@@ -78,7 +80,10 @@ const TWEEN = {
                 const end = _valuesEnd[property];
                 if (end instanceof THREE.Vector3) {
                       _object[property].lerpVectors(start, end, value);
-                } else {
+                } else if (end instanceof THREE.Color) {
+                     _object[property].lerpColors(start, end, value);
+                }
+                else {
                     _object[property] = start + (end - start) * value;
                 }
             }
@@ -95,10 +100,12 @@ const TWEEN = {
 
 const IMAGE_SIZE = 2;
 const TRANSITION_SPEED = 0.07;
+const GREEN = new THREE.Color('#006325');
+const WHITE = new THREE.Color('#FFFFFF');
 
-export default function VisualExplorerClient({ images }: { images: ImagePlaceholder[] }) {
+export default function VisualExplorerClient({ events, links }: { events: CameroonEvent[], links: CameroonHistoryLink[] }) {
   const [mode, setMode] = useState<Mode>('sphere');
-  const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
+  const [selectedEventIndex, setSelectedEventIndex] = useState<number | null>(null);
   const [prevMode, setPrevMode] = useState<Mode>('sphere');
   const [show3D, setShow3D] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
@@ -108,12 +115,19 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
   const animationFrameId = useRef<number>();
   const targetPositions = useRef<THREE.Vector3[]>([]);
   const targetQuaternions = useRef<THREE.Quaternion[]>([]);
+  
+  const eventIdToIndexMap = useMemo(() => {
+    const map = new Map<string, number>();
+    events.forEach((event, index) => {
+      map.set(event.id, index);
+    });
+    return map;
+  }, [events]);
 
   const onImageSelect = (index: number) => {
     setPrevMode(mode);
-    setSelectedImageIndex(index);
+    setSelectedEventIndex(index);
     if(mode === 'grid') {
-      // Switch from grid to 3d view when an image is selected
       handleModeChange('sphere');
     }
   };
@@ -129,8 +143,8 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
 
   const closeExplore = () => {
     const lastMode = prevMode;
-    setSelectedImageIndex(null);
-    setMode(lastMode); // This will trigger the useEffect for mode changes
+    setSelectedEventIndex(null);
+    setMode(lastMode);
     if (lastMode === 'grid') {
       setShow3D(false);
     }
@@ -141,9 +155,11 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
     const container = containerRef.current;
     
     const scene = new THREE.Scene();
+    scene.background = new THREE.Color('#6F4E37'); // Earthy brown background
+
     const camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
     camera.position.z = 25;
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
     container.appendChild(renderer.domElement);
@@ -159,31 +175,71 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
     const mouse = new THREE.Vector2();
 
     const loader = new THREE.TextureLoader();
-    const imageMeshes: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>[] = [];
+    const imageMeshes: THREE.Mesh[] = [];
     const promises: Promise<void>[] = [];
 
-    images.forEach((image, index) => {
+    events.forEach((event, index) => {
       const promise = new Promise<void>((resolve) => {
-        loader.load(image.imageUrl, (texture) => {
+        loader.load(event.imageUrl, (texture) => {
+          texture.colorSpace = THREE.SRGBColorSpace;
           const aspectRatio = texture.image.width / texture.image.height;
-          const geometry = new THREE.PlaneGeometry(IMAGE_SIZE * aspectRatio, IMAGE_SIZE);
-          const material = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide, transparent: true });
-          const mesh = new THREE.Mesh(geometry, material);
-          mesh.userData.id = image.id;
-          mesh.userData.index = index;
-          scene.add(mesh);
-          imageMeshes[index] = mesh;
+          
+          const material = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide, transparent: true, color: WHITE });
+          
+          const frameMaterial = new THREE.MeshBasicMaterial({ color: WHITE, side: THREE.DoubleSide, transparent: true, opacity: 1 });
+          const frameThickness = 0.05;
+          const frameGroup = new THREE.Group();
+
+          const imageMesh = new THREE.Mesh(new THREE.PlaneGeometry(IMAGE_SIZE * aspectRatio, IMAGE_SIZE), material);
+          imageMesh.name = "image";
+          
+          const frameTop = new THREE.Mesh(new THREE.PlaneGeometry(IMAGE_SIZE * aspectRatio + frameThickness * 2, frameThickness), frameMaterial);
+          frameTop.position.y = IMAGE_SIZE / 2 + frameThickness / 2;
+          
+          const frameBottom = new THREE.Mesh(new THREE.PlaneGeometry(IMAGE_SIZE * aspectRatio + frameThickness * 2, frameThickness), frameMaterial);
+          frameBottom.position.y = -IMAGE_SIZE / 2 - frameThickness / 2;
+
+          const frameLeft = new THREE.Mesh(new THREE.PlaneGeometry(frameThickness, IMAGE_SIZE), frameMaterial);
+          frameLeft.position.x = -(IMAGE_SIZE * aspectRatio) / 2 - frameThickness / 2;
+
+          const frameRight = new THREE.Mesh(new THREE.PlaneGeometry(frameThickness, IMAGE_SIZE), frameMaterial);
+          frameRight.position.x = (IMAGE_SIZE * aspectRatio) / 2 + frameThickness / 2;
+
+          frameGroup.add(imageMesh);
+          frameGroup.add(frameTop);
+          frameGroup.add(frameBottom);
+          frameGroup.add(frameLeft);
+          frameGroup.add(frameRight);
+
+          frameGroup.userData.id = event.id;
+          frameGroup.userData.index = index;
+          frameGroup.userData.frameMaterial = frameMaterial;
+          frameGroup.userData.baseColor = WHITE.clone();
+
+          scene.add(frameGroup);
+          imageMeshes[index] = frameGroup;
           resolve();
         });
       });
       promises.push(promise);
     });
 
+    const linkLines: THREE.Line[] = [];
+    links.forEach(link => {
+      const material = new THREE.LineBasicMaterial({ color: GREEN, transparent: true, opacity: 0.3, linewidth: 1 });
+      const geometry = new THREE.BufferGeometry();
+      const line = new THREE.Line(geometry, material);
+      line.userData.sourceId = link.source;
+      line.userData.targetId = link.target;
+      linkLines.push(line);
+      scene.add(line);
+    });
+    
     Promise.all(promises).then(() => {
         setIsLoading(false);
     });
 
-    threeRef.current = { scene, camera, renderer, controls, imageMeshes, raycaster, mouse };
+    threeRef.current = { scene, camera, renderer, controls, imageMeshes, linkLines, raycaster, mouse, hoveredMesh: null };
 
     const onWindowResize = () => {
       if (!threeRef.current || !container) return;
@@ -193,8 +249,8 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
       renderer.setSize(container.clientWidth, container.clientHeight);
     };
 
-    const onClick = (event: MouseEvent) => {
-        if (!threeRef.current || !containerRef.current || selectedImageIndex !== null) return;
+    const onMouseMove = (event: MouseEvent) => {
+        if (!threeRef.current || !containerRef.current || selectedEventIndex !== null) return;
         const { camera, imageMeshes, raycaster, mouse } = threeRef.current;
         const rect = containerRef.current.getBoundingClientRect();
 
@@ -202,37 +258,65 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
         mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
         raycaster.setFromCamera(mouse, camera);
-        const intersects = raycaster.intersectObjects(imageMeshes);
-
-        if (intersects.length > 0) {
-            const index = intersects[0].object.userData.index;
+        const intersects = raycaster.intersectObjects(imageMeshes, true);
+        const intersectedMesh = intersects.length > 0 ? (intersects[0].object.parent as THREE.Mesh) : null;
+        
+        if (threeRef.current.hoveredMesh !== intersectedMesh) {
+            if (threeRef.current.hoveredMesh) {
+                const oldHovered = threeRef.current.hoveredMesh;
+                new TWEEN.Tween(oldHovered.userData.frameMaterial)
+                  .to({ color: oldHovered.userData.baseColor }, 200)
+                  .start();
+                new TWEEN.Tween(oldHovered.scale).to({x:1, y:1, z:1}, 200).start();
+            }
+            if (intersectedMesh) {
+                 new TWEEN.Tween(intersectedMesh.userData.frameMaterial)
+                  .to({ color: GREEN }, 200)
+                  .start();
+                 new TWEEN.Tween(intersectedMesh.scale).to({x:1.1, y:1.1, z:1.1}, 200).start();
+            }
+            threeRef.current.hoveredMesh = intersectedMesh;
+        }
+    };
+    
+    const onClick = (event: MouseEvent) => {
+        if (threeRef.current?.hoveredMesh) {
+            const index = threeRef.current.hoveredMesh.userData.index;
             onImageSelect(index);
         }
     }
 
     window.addEventListener('resize', onWindowResize);
+    container.addEventListener('mousemove', onMouseMove);
     container.addEventListener('click', onClick);
 
     return () => {
       window.removeEventListener('resize', onWindowResize);
+      container.removeEventListener('mousemove', onMouseMove);
       container.removeEventListener('click', onClick);
-      if (renderer.domElement.parentNode) {
-          renderer.domElement.parentNode.removeChild(renderer.domElement);
+      if (renderer.domElement.parentNode === container) {
+          container.removeChild(renderer.domElement);
       }
+      // Full cleanup to avoid leaks
+      scene.traverse(object => {
+        if (object instanceof THREE.Mesh) {
+          object.geometry.dispose();
+          if (Array.isArray(object.material)) {
+            object.material.forEach(material => material.dispose());
+          } else {
+            object.material.dispose();
+          }
+        }
+      });
+      renderer.dispose();
       threeRef.current = undefined;
     };
-  }, [images, selectedImageIndex]);
+  }, [events, links, eventIdToIndexMap]);
 
   useEffect(() => {
     let cleanup: (() => void) | undefined;
     if (show3D) {
-      if (!threeRef.current) {
         cleanup = setupScene();
-      } else if (containerRef.current && threeRef.current.renderer.domElement.parentNode !== containerRef.current) {
-        containerRef.current.appendChild(threeRef.current.renderer.domElement);
-      }
-    } else if(threeRef.current && threeRef.current.renderer.domElement.parentNode) {
-        threeRef.current.renderer.domElement.parentNode.removeChild(threeRef.current.renderer.domElement)
     }
     
     return () => {
@@ -243,11 +327,36 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
   const animate = useCallback(() => {
     animationFrameId.current = requestAnimationFrame(animate);
     if (!threeRef.current || !show3D || isLoading) return;
-    const { renderer, scene, camera, controls, imageMeshes } = threeRef.current;
+    const { renderer, scene, camera, controls, imageMeshes, linkLines, hoveredMesh } = threeRef.current;
 
     TWEEN.update(performance.now());
+    
+    const time = performance.now() * 0.001;
 
-    if (imageMeshes.length === images.length && selectedImageIndex === null) {
+    linkLines.forEach(line => {
+        const sourceIndex = eventIdToIndexMap.get(line.userData.sourceId);
+        const targetIndex = eventIdToIndexMap.get(line.userData.targetId);
+        
+        if(sourceIndex !== undefined && targetIndex !== undefined && imageMeshes[sourceIndex] && imageMeshes[targetIndex]) {
+            const start = imageMeshes[sourceIndex].position;
+            const end = imageMeshes[targetIndex].position;
+            
+            const points = [start, end];
+            line.geometry.setFromPoints(points);
+            line.geometry.attributes.position.needsUpdate = true;
+
+            const isHovered = hoveredMesh && (hoveredMesh.userData.id === line.userData.sourceId || hoveredMesh.userData.id === line.userData.targetId);
+            const material = line.material as THREE.LineBasicMaterial;
+            material.opacity = isHovered ? 0.8 : 0.3;
+            material.color.set(isHovered ? WHITE : GREEN);
+            
+            if (isHovered) {
+                material.opacity = 0.5 + 0.3 * Math.sin(time * 5);
+            }
+        }
+    });
+
+    if (imageMeshes.length === events.length && selectedEventIndex === null) {
       imageMeshes.forEach((mesh, index) => {
         if (!mesh) return;
         
@@ -265,7 +374,7 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
 
     controls.update();
     renderer.render(scene, camera);
-  }, [images.length, show3D, selectedImageIndex, isLoading]);
+  }, [events.length, show3D, selectedEventIndex, isLoading, eventIdToIndexMap]);
 
   useEffect(() => {
     animate();
@@ -276,22 +385,31 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
 
   useEffect(() => {
     if (isLoading || !threeRef.current || !show3D) return;
-    const { camera, controls, imageMeshes } = threeRef.current;
+    const { camera, controls, imageMeshes, linkLines } = threeRef.current;
     
     let points: THREE.Vector3[] = [];
     const sphereRadius = 15;
     
-    if (selectedImageIndex !== null) {
-      const selectedMesh = imageMeshes[selectedImageIndex];
+    if (selectedEventIndex !== null) {
+      const selectedMesh = imageMeshes[selectedEventIndex];
       if (!selectedMesh) return;
       const camPos = selectedMesh.position.clone().add(new THREE.Vector3(0, 0, IMAGE_SIZE * 3));
       
       imageMeshes.forEach((mesh, i) => {
         if (mesh) {
-            new TWEEN.Tween(mesh.material)
-              .to({ opacity: i === selectedImageIndex ? 1 : 0 }, 500)
+          const image = mesh.getObjectByName('image') as THREE.Mesh<any, THREE.MeshBasicMaterial>;
+          if (image) {
+            new TWEEN.Tween(image.material)
+              .to({ opacity: i === selectedEventIndex ? 1 : 0 }, 500)
               .start();
+          }
+          new TWEEN.Tween(mesh.userData.frameMaterial)
+            .to({ opacity: i === selectedEventIndex ? 1 : 0 }, 500)
+            .start();
         }
+      });
+      linkLines.forEach(line => {
+        new TWEEN.Tween(line.material).to({opacity: 0}, 500).start();
       });
 
       new TWEEN.Tween(camera.position)
@@ -309,26 +427,35 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
       controls.enabled = true;
       imageMeshes.forEach(mesh => {
         if (mesh) {
-           new TWEEN.Tween(mesh.material).to({ opacity: 1 }, 500).start();
+            const image = mesh.getObjectByName('image') as THREE.Mesh<any, THREE.MeshBasicMaterial>;
+            if (image) {
+              new TWEEN.Tween(image.material).to({ opacity: 1 }, 500).start();
+            }
+            new TWEEN.Tween(mesh.userData.frameMaterial).to({ opacity: 1 }, 500).start();
         }
+      });
+      linkLines.forEach(line => {
+        new TWEEN.Tween(line.material).to({opacity: 0.3}, 500).start();
       });
 
       switch (mode) {
         case 'sphere':
-          points = getSpherePoints(images.length, sphereRadius);
+          points = getSpherePoints(events.length, sphereRadius);
+          linkLines.forEach(line => line.visible = true);
           break;
         case 'name':
-          points = getNamePoints(images.length);
+          points = getNamePoints(events.length);
+          linkLines.forEach(line => line.visible = false);
           break;
         case 'grid':
           return;
       }
       targetPositions.current = points;
       const cameraQuaternion = camera.quaternion.clone();
-      targetQuaternions.current = images.map(() => cameraQuaternion);
+      targetQuaternions.current = events.map(() => cameraQuaternion);
     }
 
-  }, [mode, selectedImageIndex, images.length, isLoading, show3D]);
+  }, [mode, selectedEventIndex, events.length, isLoading, show3D]);
 
   return (
     <>
@@ -337,23 +464,23 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
       {isLoading && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 z-30">
               <Loader className="w-12 h-12 animate-spin text-primary" />
-              <p className="mt-4 text-lg font-headline text-foreground">Loading Visual Explorer...</p>
+              <p className="mt-4 text-lg font-headline text-white">Loading Visual Explorer...</p>
           </div>
       )}
 
       <div className={`absolute inset-0 transition-opacity duration-500 ${!show3D && !isLoading ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
         {mode === 'grid' && (
-            <GridView images={images} onImageSelect={onImageSelect} />
+            <GridView events={events} onImageSelect={onImageSelect} />
         )}
       </div>
 
-      {!isLoading && selectedImageIndex !== null && (
+      {!isLoading && selectedEventIndex !== null && (
         <ExploreOverlay
-          image={images[selectedImageIndex]}
-          currentIndex={selectedImageIndex}
-          totalImages={images.length}
+          event={events[selectedEventIndex]}
+          currentIndex={selectedEventIndex}
+          totalImages={events.length}
           onClose={closeExplore}
-          onNavigate={(newIndex) => setSelectedImageIndex(newIndex)}
+          onNavigate={(newIndex) => setSelectedEventIndex(newIndex)}
         />
       )}
 
@@ -361,5 +488,3 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
     </>
   );
 }
-
-    

@@ -1,13 +1,13 @@
 'use client';
-import type { ImagePlaceholder } from '@/lib/placeholder-images';
+import type { CameroonEvent } from '@/lib/cameroon-history-data';
 import Image from 'next/image';
 import { Button } from './ui/button';
-import { X, ChevronLeft, ChevronRight } from 'lucide-react';
-import ImageDescription from './image-description';
-import { Card, CardContent } from './ui/card';
+import { X, ChevronLeft, ChevronRight, Link } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Badge } from './ui/badge';
 
 interface ExploreOverlayProps {
-  image: ImagePlaceholder;
+  event: CameroonEvent;
   currentIndex: number;
   totalImages: number;
   onClose: () => void;
@@ -15,13 +15,12 @@ interface ExploreOverlayProps {
 }
 
 export default function ExploreOverlay({
-  image,
+  event,
   currentIndex,
   totalImages,
   onClose,
   onNavigate,
 }: ExploreOverlayProps) {
-
   const handlePrev = () => {
     onNavigate((currentIndex - 1 + totalImages) % totalImages);
   };
@@ -31,11 +30,11 @@ export default function ExploreOverlay({
   };
 
   return (
-    <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-20 flex items-center justify-center fade-in">
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-lg z-20 flex items-center justify-center fade-in">
       <Button
         variant="ghost"
         size="icon"
-        className="absolute top-4 right-4 rounded-full h-12 w-12"
+        className="absolute top-4 right-4 rounded-full h-12 w-12 text-white"
         onClick={onClose}
       >
         <X className="h-6 w-6" />
@@ -44,7 +43,7 @@ export default function ExploreOverlay({
       <Button
         variant="ghost"
         size="icon"
-        className="absolute left-4 top-1/2 -translate-y-1/2 rounded-full h-12 w-12"
+        className="absolute left-4 top-1/2 -translate-y-1/2 rounded-full h-12 w-12 text-white"
         onClick={handlePrev}
       >
         <ChevronLeft className="h-8 w-8" />
@@ -53,30 +52,42 @@ export default function ExploreOverlay({
       <Button
         variant="ghost"
         size="icon"
-        className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full h-12 w-12"
+        className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full h-12 w-12 text-white"
         onClick={handleNext}
       >
         <ChevronRight className="h-8 w-8" />
       </Button>
-      
-      <div className="flex flex-col lg:flex-row items-center justify-center gap-8 p-4 max-w-6xl w-full">
-        <div className="relative w-full max-w-lg lg:max-w-xl aspect-[4/3] rounded-lg overflow-hidden shadow-2xl">
-            <Image
-                src={image.imageUrl}
-                alt={`Image ${image.id}`}
-                fill
-                className="object-contain"
-                data-ai-hint={image.imageHint}
-            />
+
+      <div className="flex flex-col lg:flex-row items-center justify-center gap-8 p-4 max-w-7xl w-full">
+        <div className="relative w-full max-w-2xl aspect-[4/3] rounded-lg overflow-hidden shadow-2xl">
+          <Image
+            src={event.imageUrl}
+            alt={event.title}
+            fill
+            className="object-cover"
+          />
         </div>
-        <Card className="w-full max-w-md bg-card/70">
-          <CardContent className="p-6">
-            <h2 className="text-2xl font-headline text-primary mb-4">Details</h2>
-            <ImageDescription imageId={image.id} imageHint={image.imageHint} />
+        <Card className="w-full max-w-md bg-stone-800/80 border-green-900/50" style={{'--tw-bg-opacity': '0.8', backgroundColor: 'rgba(111, 78, 55, var(--tw-bg-opacity))'}}>
+          <CardHeader>
+            <CardTitle className="text-2xl font-headline text-white">{event.title}</CardTitle>
+            <p className="text-sm text-gray-300">{event.date}</p>
+          </CardHeader>
+          <CardContent>
+            <p className="text-gray-200 mb-6">{event.summary}</p>
+            <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
+              <Link className="h-4 w-4" />
+              Context & Themes
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {event.contextLinks.map((link) => (
+                <Badge key={link} variant="secondary" className="bg-green-800/50 text-white border-green-700">
+                  {link}
+                </Badge>
+              ))}
+            </div>
           </CardContent>
         </Card>
       </div>
-
     </div>
   );
 }

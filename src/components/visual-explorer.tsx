@@ -1,9 +1,6 @@
-import { PlaceHolderImages } from '@/lib/placeholder-images';
+import { CAMEROON_HISTORY_DATA, CAMEROON_HISTORY_LINKS } from '@/lib/cameroon-history-data';
 import VisualExplorerClient from './visual-explorer-client';
 
 export default function VisualExplorer() {
-  // In a real app, you might fetch this data from an API
-  const images = PlaceHolderImages;
-  
-  return <VisualExplorerClient images={images} />;
+  return <VisualExplorerClient events={CAMEROON_HISTORY_DATA} links={CAMEROON_HISTORY_LINKS} />;
 }
