@@ -124,8 +124,13 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
   };
 
   const setupScene = useCallback(() => {
-    if (!containerRef.current) return;
+    if (!containerRef.current || !show3D) return;
     const container = containerRef.current;
+
+    // If a renderer already exists, just return.
+    if (container.querySelector('canvas')) {
+        return;
+    }
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
@@ -163,7 +168,9 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
         loadedCount++;
         if (loadedCount === images.length) {
             setIsLoading(false);
-            setMode('sphere');
+            // This was set to 'sphere', but it's better to respect the current mode
+            // in case the user switches tabs quickly.
+            // setMode('sphere');
         }
       });
     });
@@ -171,7 +178,7 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
     threeRef.current = { scene, camera, renderer, controls, imageMeshes, raycaster, mouse };
 
     const onWindowResize = () => {
-      if (!threeRef.current) return;
+      if (!threeRef.current || !container) return;
       const { camera, renderer } = threeRef.current;
       camera.aspect = container.clientWidth / container.clientHeight;
       camera.updateProjectionMatrix();
@@ -204,23 +211,26 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
       if(renderer.domElement.parentNode === container) {
         container.removeChild(renderer.domElement);
       }
+      threeRef.current = undefined;
     };
-  }, [images]);
+  }, [images, show3D]);
 
   useEffect(() => {
-    const cleanup = setupScene();
+    let cleanup: (() => void) | undefined;
+    if (show3D) {
+        cleanup = setupScene();
+    }
+    
     return () => {
         if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
         if (cleanup) cleanup();
     }
-  }, [setupScene]);
+  }, [setupScene, show3D]);
 
   const animate = useCallback(() => {
     animationFrameId.current = requestAnimationFrame(animate);
     if (!threeRef.current) return;
     const { renderer, scene, camera, controls, imageMeshes } = threeRef.current;
-
-    const cameraQuaternion = camera.quaternion.clone();
 
     if (imageMeshes.length === images.length) {
       imageMeshes.forEach((mesh, index) => {
@@ -243,14 +253,16 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
   }, [images.length]);
 
   useEffect(() => {
-    animate();
+    if (show3D) {
+      animate();
+    }
     return () => {
       if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
     };
-  }, [animate]);
+  }, [animate, show3D]);
 
   useEffect(() => {
-    if (isLoading || !threeRef.current) return;
+    if (isLoading || !threeRef.current || !show3D) return;
     const { camera, controls } = threeRef.current;
     
     let points: THREE.Vector3[] = [];
@@ -309,20 +321,19 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
           points = getNamePoints(images.length);
           break;
         case 'grid':
-          points = getGridPoints(images.length, IMAGE_SIZE * 1.5);
+          // This case should not be hit if show3D is true
           break;
       }
       targetPositions.current = points;
       const cameraQuaternion = camera.quaternion.clone();
       targetQuaternions.current = images.map(() => cameraQuaternion);
-
     }
 
-  }, [mode, selectedImageIndex, images.length, isLoading]);
+  }, [mode, selectedImageIndex, images.length, isLoading, show3D]);
 
   return (
     <>
-      <div className={`absolute inset-0 transition-opacity duration-500 ${show3D ? 'opacity-100' : 'opacity-0'}`} ref={containerRef} />
+      <div className={`absolute inset-0 transition-opacity duration-500 ${show3D ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} ref={containerRef} />
       
       {isLoading && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 z-20">
