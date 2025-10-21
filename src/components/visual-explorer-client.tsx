@@ -24,6 +24,69 @@ type ThreeObjects = {
 const IMAGE_SIZE = 2;
 const TRANSITION_SPEED = 0.07;
 
+// Polyfill for TWEEN
+const TWEEN = {
+    Easing: { Quadratic: { Out: (k: number) => k * ( 2 - k ) } },
+    _tweens: [] as any[],
+    update: function(time: number) {
+        if (this._tweens.length === 0) return false;
+        let i = 0;
+        const num_tweens = this._tweens.length;
+        while (i < num_tweens) {
+            if (this._tweens[i].update(time)) {
+                i++;
+            } else {
+                this._tweens.splice(i, 1);
+            }
+        }
+        return true;
+    },
+    add: function(tween: any) { this._tweens.push(tween); },
+    Tween: function(object: any) {
+        let _object = object;
+        let _valuesStart: any = {};
+        let _valuesEnd: any = {};
+        let _duration = 1000;
+        let _easingFunction = TWEEN.Easing.Quadratic.Out;
+        let _startTime = 0;
+
+        this.to = function(properties: any, duration: number) {
+            _valuesEnd = properties;
+            if(duration !== undefined) _duration = duration;
+            return this;
+        };
+        this.start = function(time?: number) {
+            TWEEN.add(this);
+            _startTime = time !== undefined ? time : Date.now();
+            for (var property in _valuesEnd) {
+                if (_object[property] === undefined) continue;
+                _valuesStart[property] = _object[property];
+            }
+            return this;
+        };
+        this.easing = function(easing: any) {
+            _easingFunction = easing;
+            return this;
+        };
+        this.update = function(time: number) {
+            let elapsed = (time - _startTime) / _duration;
+            elapsed = elapsed > 1 ? 1 : elapsed;
+            const value = _easingFunction(elapsed);
+            for (var property in _valuesEnd) {
+                const start = _valuesStart[property] || 0;
+                const end = _valuesEnd[property];
+                if (end instanceof THREE.Vector3) {
+                      _object[property].lerpVectors(start, end, value);
+                } else {
+                    _object[property] = start + (end - start) * value;
+                }
+            }
+            if (elapsed === 1) return false;
+            return true;
+        };
+    }
+};
+
 export default function VisualExplorerClient({ images }: { images: ImagePlaceholder[] }) {
   const [mode, setMode] = useState<Mode>('sphere');
   const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
@@ -254,69 +317,6 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
       targetQuaternions.current = images.map(() => cameraQuaternion);
 
     }
-    
-    // Polyfill for TWEEN
-    const TWEEN = {
-        Easing: { Quadratic: { Out: (k: number) => k * ( 2 - k ) } },
-        _tweens: [] as any[],
-        update: function(time: number) {
-            if (this._tweens.length === 0) return false;
-            let i = 0;
-            const num_tweens = this._tweens.length;
-            while (i < num_tweens) {
-                if (this._tweens[i].update(time)) {
-                    i++;
-                } else {
-                    this._tweens.splice(i, 1);
-                }
-            }
-            return true;
-        },
-        add: function(tween: any) { this._tweens.push(tween); },
-        Tween: function(object: any) {
-            let _object = object;
-            let _valuesStart: any = {};
-            let _valuesEnd: any = {};
-            let _duration = 1000;
-            let _easingFunction = TWEEN.Easing.Quadratic.Out;
-            let _startTime = 0;
-
-            this.to = function(properties: any, duration: number) {
-                _valuesEnd = properties;
-                if(duration !== undefined) _duration = duration;
-                return this;
-            };
-            this.start = function(time?: number) {
-                TWEEN.add(this);
-                _startTime = time !== undefined ? time : Date.now();
-                for (var property in _valuesEnd) {
-                    if (_object[property] === undefined) continue;
-                    _valuesStart[property] = _object[property];
-                }
-                return this;
-            };
-            this.easing = function(easing: any) {
-                _easingFunction = easing;
-                return this;
-            };
-            this.update = function(time: number) {
-                let elapsed = (time - _startTime) / _duration;
-                elapsed = elapsed > 1 ? 1 : elapsed;
-                const value = _easingFunction(elapsed);
-                for (var property in _valuesEnd) {
-                    const start = _valuesStart[property] || 0;
-                    const end = _valuesEnd[property];
-                    if (end instanceof THREE.Vector3) {
-                         _object[property].lerpVectors(start, end, value);
-                    } else {
-                        _object[property] = start + (end - start) * value;
-                    }
-                }
-                if (elapsed === 1) return false;
-                return true;
-            };
-        }
-    };
 
   }, [mode, selectedImageIndex, images.length, isLoading]);
 
