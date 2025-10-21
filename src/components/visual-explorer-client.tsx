@@ -21,7 +21,6 @@ type ThreeObjects = {
   mouse: THREE.Vector2;
 };
 
-// Polyfill for TWEEN
 const TWEEN = {
     Easing: { Quadratic: { Out: (k: number) => k * ( 2 - k ) } },
     _tweens: [] as any[],
@@ -131,24 +130,15 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
   const closeExplore = () => {
     const lastMode = prevMode;
     setSelectedImageIndex(null);
-    setMode(lastMode);
+    setMode(lastMode); // This will trigger the useEffect for mode changes
     if (lastMode === 'grid') {
       setShow3D(false);
     }
   };
 
   const setupScene = useCallback(() => {
-    if (!containerRef.current || !show3D) return;
+    if (!containerRef.current) return;
     const container = containerRef.current;
-
-    // If scene exists, just re-append it
-    if (threeRef.current) {
-        if(threeRef.current.renderer.domElement.parentNode !== container) {
-            container.appendChild(threeRef.current.renderer.domElement);
-            onWindowResize(); // Recalculate size
-        }
-        return;
-    }
     
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
@@ -170,24 +160,27 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
 
     const loader = new THREE.TextureLoader();
     const imageMeshes: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>[] = [];
+    const promises: Promise<void>[] = [];
 
-    let loadedCount = 0;
     images.forEach((image, index) => {
-      loader.load(image.imageUrl, (texture) => {
-        const aspectRatio = texture.image.width / texture.image.height;
-        const geometry = new THREE.PlaneGeometry(IMAGE_SIZE * aspectRatio, IMAGE_SIZE);
-        const material = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide, transparent: true });
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.userData.id = image.id;
-        mesh.userData.index = index;
-        scene.add(mesh);
-        imageMeshes[index] = mesh;
-        
-        loadedCount++;
-        if (loadedCount === images.length) {
-            setIsLoading(false);
-        }
+      const promise = new Promise<void>((resolve) => {
+        loader.load(image.imageUrl, (texture) => {
+          const aspectRatio = texture.image.width / texture.image.height;
+          const geometry = new THREE.PlaneGeometry(IMAGE_SIZE * aspectRatio, IMAGE_SIZE);
+          const material = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide, transparent: true });
+          const mesh = new THREE.Mesh(geometry, material);
+          mesh.userData.id = image.id;
+          mesh.userData.index = index;
+          scene.add(mesh);
+          imageMeshes[index] = mesh;
+          resolve();
+        });
       });
+      promises.push(promise);
+    });
+
+    Promise.all(promises).then(() => {
+        setIsLoading(false);
     });
 
     threeRef.current = { scene, camera, renderer, controls, imageMeshes, raycaster, mouse };
@@ -223,25 +216,33 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
     return () => {
       window.removeEventListener('resize', onWindowResize);
       container.removeEventListener('click', onClick);
+      if (renderer.domElement.parentNode) {
+          renderer.domElement.parentNode.removeChild(renderer.domElement);
+      }
+      threeRef.current = undefined;
     };
-  }, [images, show3D, selectedImageIndex]);
+  }, [images, selectedImageIndex]);
 
   useEffect(() => {
     let cleanup: (() => void) | undefined;
-    if (show3D && !isLoading) {
+    if (show3D) {
+      if (!threeRef.current) {
         cleanup = setupScene();
-    } else if (threeRef.current?.renderer.domElement.parentNode) {
+      } else if (containerRef.current && threeRef.current.renderer.domElement.parentNode !== containerRef.current) {
+        containerRef.current.appendChild(threeRef.current.renderer.domElement);
+      }
+    } else if(threeRef.current && threeRef.current.renderer.domElement.parentNode) {
         threeRef.current.renderer.domElement.parentNode.removeChild(threeRef.current.renderer.domElement)
     }
     
     return () => {
         if (cleanup) cleanup();
     }
-  }, [setupScene, show3D, isLoading]);
+  }, [show3D, setupScene]);
 
   const animate = useCallback(() => {
     animationFrameId.current = requestAnimationFrame(animate);
-    if (!threeRef.current || !show3D) return;
+    if (!threeRef.current || !show3D || isLoading) return;
     const { renderer, scene, camera, controls, imageMeshes } = threeRef.current;
 
     TWEEN.update(performance.now());
@@ -264,30 +265,28 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
 
     controls.update();
     renderer.render(scene, camera);
-  }, [images.length, show3D, selectedImageIndex]);
+  }, [images.length, show3D, selectedImageIndex, isLoading]);
 
   useEffect(() => {
-    if (show3D) {
-      animate();
-    }
+    animate();
     return () => {
       if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
     };
-  }, [animate, show3D]);
+  }, [animate]);
 
   useEffect(() => {
     if (isLoading || !threeRef.current || !show3D) return;
-    const { camera, controls } = threeRef.current;
+    const { camera, controls, imageMeshes } = threeRef.current;
     
     let points: THREE.Vector3[] = [];
     const sphereRadius = 15;
     
     if (selectedImageIndex !== null) {
-      const selectedMesh = threeRef.current.imageMeshes[selectedImageIndex];
+      const selectedMesh = imageMeshes[selectedImageIndex];
       if (!selectedMesh) return;
       const camPos = selectedMesh.position.clone().add(new THREE.Vector3(0, 0, IMAGE_SIZE * 3));
       
-      threeRef.current.imageMeshes.forEach((mesh, i) => {
+      imageMeshes.forEach((mesh, i) => {
         if (mesh) {
             new TWEEN.Tween(mesh.material)
               .to({ opacity: i === selectedImageIndex ? 1 : 0 }, 500)
@@ -306,9 +305,9 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
 
       controls.enabled = false;
 
-    } else { // This block runs when closing the detail view
+    } else { 
       controls.enabled = true;
-      threeRef.current.imageMeshes.forEach(mesh => {
+      imageMeshes.forEach(mesh => {
         if (mesh) {
            new TWEEN.Tween(mesh.material).to({ opacity: 1 }, 500).start();
         }
@@ -322,7 +321,6 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
           points = getNamePoints(images.length);
           break;
         case 'grid':
-          // This case is handled by show3D state, but we return to prevent further processing
           return;
       }
       targetPositions.current = points;
@@ -363,3 +361,5 @@ export default function VisualExplorerClient({ images }: { images: ImagePlacehol
     </>
   );
 }
+
+    
