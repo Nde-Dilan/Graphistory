@@ -1,5 +1,5 @@
 'use client';
-import type { CameroonEvent, CameroonHistoryLink } from '@/lib/cameroon-history-data';
+import type { CameroonEvent } from '@/lib/cameroon-history-data';
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -8,6 +8,7 @@ import GridView from './grid-view';
 import ExploreOverlay from './explore-overlay';
 import { getSpherePoints, getNamePoints } from '@/lib/three-helpers';
 import { Loader } from 'lucide-react';
+import { CAMEROON_HISTORY_DATA, CAMEROON_HISTORY_LINKS } from '@/lib/cameroon-history-data';
 
 type Mode = 'grid' | 'sphere' | 'name';
 
@@ -29,9 +30,8 @@ const TWEEN = {
     update: function(time: number) {
         if (this._tweens.length === 0) return false;
         let i = 0;
-        const num_tweens = this._tweens.length;
-        while (i < num_tweens) {
-            if (this._tweens[i].update(time)) {
+        while (i < this._tweens.length) {
+            if (this._tweens[i] && this._tweens[i].update(time)) {
                 i++;
             } else {
                 this._tweens.splice(i, 1);
@@ -103,7 +103,7 @@ const TRANSITION_SPEED = 0.07;
 const GREEN = new THREE.Color('#006325');
 const WHITE = new THREE.Color('#FFFFFF');
 
-export default function VisualExplorerClient({ events, links }: { events: CameroonEvent[], links: CameroonHistoryLink[] }) {
+export default function VisualExplorerClient({ events, links }: { events: CameroonEvent[], links: typeof CAMEROON_HISTORY_LINKS }) {
   const [mode, setMode] = useState<Mode>('sphere');
   const [selectedEventIndex, setSelectedEventIndex] = useState<number | null>(null);
   const [prevMode, setPrevMode] = useState<Mode>('sphere');
@@ -125,37 +125,58 @@ export default function VisualExplorerClient({ events, links }: { events: Camero
   }, [events]);
 
   const onImageSelect = (index: number) => {
+    if (mode === 'grid') {
+      handleModeChange('sphere', () => setSelectedEventIndex(index));
+    } else {
+      setSelectedEventIndex(index);
+    }
     setPrevMode(mode);
-    setSelectedEventIndex(index);
-    if(mode === 'grid') {
-      handleModeChange('sphere');
+  };
+  
+  const handleModeChange = (newMode: Mode, callback?: () => void) => {
+    if (newMode === 'grid') {
+      setShow3D(false);
+      setMode(newMode);
+      if (callback) callback();
+    } else {
+      if (!show3D) {
+        setShow3D(true);
+        // Defer mode change until after the 3D scene is shown and ready
+        setTimeout(() => {
+          setMode(newMode);
+          if (callback) callback();
+        }, 100);
+      } else {
+        setMode(newMode);
+        if (callback) callback();
+      }
     }
   };
   
-  const handleModeChange = (newMode: Mode) => {
-    setMode(newMode);
-    if (newMode === 'grid') {
-      setShow3D(false);
-    } else {
-      setShow3D(true);
-    }
-  };
 
   const closeExplore = () => {
     const lastMode = prevMode;
     setSelectedEventIndex(null);
-    setMode(lastMode);
-    if (lastMode === 'grid') {
-      setShow3D(false);
+
+    // This logic ensures that no matter what, we have a valid previous mode
+    // to return to that isn't the explore view itself.
+    const returnMode = (lastMode && lastMode !== 'grid') ? lastMode : 'sphere';
+    
+    if (prevMode === 'grid') {
+      handleModeChange('grid');
+    } else {
+      setMode(returnMode);
+      setShow3D(true);
     }
-  };
+};
+
 
   const setupScene = useCallback(() => {
     if (!containerRef.current) return;
     const container = containerRef.current;
     
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#6F4E37'); // Earthy brown background
+    scene.background = new THREE.Color('#6F4E37');
 
     const camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
     camera.position.z = 25;
@@ -297,7 +318,6 @@ export default function VisualExplorerClient({ events, links }: { events: Camero
       if (renderer.domElement.parentNode === container) {
           container.removeChild(renderer.domElement);
       }
-      // Full cleanup to avoid leaks
       scene.traverse(object => {
         if (object instanceof THREE.Mesh) {
           object.geometry.dispose();
@@ -316,7 +336,8 @@ export default function VisualExplorerClient({ events, links }: { events: Camero
   useEffect(() => {
     let cleanup: (() => void) | undefined;
     if (show3D) {
-        cleanup = setupScene();
+      setIsLoading(true);
+      cleanup = setupScene();
     }
     
     return () => {
@@ -403,9 +424,10 @@ export default function VisualExplorerClient({ events, links }: { events: Camero
               .to({ opacity: i === selectedEventIndex ? 1 : 0 }, 500)
               .start();
           }
-          new TWEEN.Tween(mesh.userData.frameMaterial)
-            .to({ opacity: i === selectedEventIndex ? 1 : 0 }, 500)
-            .start();
+          const frameMaterial = mesh.userData.frameMaterial as THREE.MeshBasicMaterial;
+            if (frameMaterial) {
+              new TWEEN.Tween(frameMaterial).to({ opacity: i === selectedEventIndex ? 1 : 0 }, 500).start();
+            }
         }
       });
       linkLines.forEach(line => {
@@ -431,7 +453,10 @@ export default function VisualExplorerClient({ events, links }: { events: Camero
             if (image) {
               new TWEEN.Tween(image.material).to({ opacity: 1 }, 500).start();
             }
-            new TWEEN.Tween(mesh.userData.frameMaterial).to({ opacity: 1 }, 500).start();
+             const frameMaterial = mesh.userData.frameMaterial as THREE.MeshBasicMaterial;
+            if (frameMaterial) {
+              new TWEEN.Tween(frameMaterial).to({ opacity: 1 }, 500).start();
+            }
         }
       });
       linkLines.forEach(line => {
@@ -461,14 +486,14 @@ export default function VisualExplorerClient({ events, links }: { events: Camero
     <>
       <div className={`absolute inset-0 transition-opacity duration-500 ${show3D && !isLoading ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} ref={containerRef} />
       
-      {isLoading && (
+      {isLoading && show3D && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 z-30">
               <Loader className="w-12 h-12 animate-spin text-primary" />
               <p className="mt-4 text-lg font-headline text-white">Loading Visual Explorer...</p>
           </div>
       )}
 
-      <div className={`absolute inset-0 transition-opacity duration-500 ${!show3D && !isLoading ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+      <div className={`absolute inset-0 transition-opacity duration-500 ${!show3D ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
         {mode === 'grid' && (
             <GridView events={events} onImageSelect={onImageSelect} />
         )}
