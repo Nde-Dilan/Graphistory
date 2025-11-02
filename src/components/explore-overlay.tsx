@@ -3,7 +3,6 @@ import type { CameroonEvent } from '@/lib/cameroon-history-data';
 import Image from 'next/image';
 import { Button } from './ui/button';
 import { X, ChevronLeft, ChevronRight, Link } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import ImageDescription from './image-description';
 
@@ -31,66 +30,59 @@ export default function ExploreOverlay({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-lg z-20 flex items-center justify-center fade-in">
-      <Button
-        variant="ghost"
-        size="icon"
-        className="absolute top-4 right-4 rounded-full h-12 w-12 text-white"
-        onClick={onClose}
-      >
-        <X className="h-6 w-6" />
-      </Button>
-
-      <Button
-        variant="ghost"
-        size="icon"
-        className="absolute left-4 top-1/2 -translate-y-1/2 rounded-full h-12 w-12 text-white"
-        onClick={handlePrev}
-      >
-        <ChevronLeft className="h-8 w-8" />
-      </Button>
-
-      <Button
-        variant="ghost"
-        size="icon"
-        className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full h-12 w-12 text-white"
-        onClick={handleNext}
-      >
-        <ChevronRight className="h-8 w-8" />
-      </Button>
-
-      <div className="flex flex-col lg:flex-row items-center justify-center gap-8 p-4 max-w-7xl w-full">
-        <div className="relative w-full max-w-2xl aspect-[4/3] rounded-lg overflow-hidden shadow-2xl">
-          <Image
-            src={event.imageUrl}
-            alt={event.title}
-            fill
-            className="object-cover"
-          />
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-20 flex items-center justify-center p-4 fade-in">
+      <div className="w-full max-w-5xl bg-[#C0C0C0] border-t border-l border-[#FFFFFF] border-r border-b border-[#808080] shadow-lg rounded-sm">
+        <div className="h-8 bg-gradient-to-r from-[#000080] to-[#1084d0] flex items-center justify-between px-2 rounded-t-sm">
+          <p className="text-white font-code text-sm">Event Details: {event.title}</p>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 rounded-sm bg-[#C0C0C0] text-black hover:bg-red-500 hover:text-white"
+            onClick={onClose}
+          >
+            <X className="h-4 w-4" />
+          </Button>
         </div>
-        <Card className="w-full max-w-md bg-card/80 border-border">
-          <CardHeader>
-            <CardTitle className="text-2xl font-headline text-accent">{event.title}</CardTitle>
-            <p className="text-sm text-gray-300">{event.date}</p>
-          </CardHeader>
-          <CardContent>
-            <p className="text-gray-200 mb-4">{event.summary}</p>
-            <div className="mb-6">
-              <ImageDescription imageId={event.id} imageHint={event.imageHint}/>
-            </div>
-            <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
-              <Link className="h-4 w-4" />
-              Context & Themes
-            </h3>
-            <div className="flex flex-wrap gap-2">
-              {event.contextLinks.map((link) => (
-                <Badge key={link} variant="secondary" className="bg-secondary/50 text-white border-secondary">
-                  {link}
-                </Badge>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+
+        <div className="p-4 flex flex-col lg:flex-row items-start justify-center gap-4">
+          <div className="relative w-full max-w-md lg:max-w-lg aspect-square lg:aspect-[4/3] border-t border-l border-[#808080] border-r border-b border-[#FFFFFF] p-0.5 bg-black">
+             <Image
+              src={event.imageUrl}
+              alt={event.title}
+              fill
+              className="object-contain"
+            />
+          </div>
+          <div className="w-full max-w-md space-y-4">
+              <h1 className="text-2xl font-headline text-accent">{event.title}</h1>
+              <p className="text-sm font-code text-secondary">{event.date}</p>
+              <p className="text-foreground/80">{event.summary}</p>
+              <div className="py-2">
+                <ImageDescription imageId={event.id} imageHint={event.imageHint}/>
+              </div>
+              <h3 className="font-semibold text-foreground flex items-center gap-2 pt-2 border-t border-gray-400">
+                <Link className="h-4 w-4" />
+                Context & Themes
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {event.contextLinks.map((link) => (
+                  <Badge key={link} variant="secondary" className="bg-secondary/80 text-white border-none font-code">
+                    {link}
+                  </Badge>
+                ))}
+              </div>
+          </div>
+        </div>
+
+        <div className="flex justify-center gap-4 p-2">
+          <Button onClick={handlePrev} className="bg-[#C0C0C0] border-t border-l border-white border-b border-r border-gray-500 text-black hover:bg-gray-300 font-code">
+            <ChevronLeft className="h-5 w-5 mr-2" /> Prev
+          </Button>
+          <Button onClick={handleNext} className="bg-[#C0C0C0] border-t border-l border-white border-b border-r border-gray-500 text-black hover:bg-gray-300 font-code">
+            Next <ChevronRight className="h-5 w-5 ml-2" />
+          </Button>
+        </div>
+
       </div>
     </div>
   );

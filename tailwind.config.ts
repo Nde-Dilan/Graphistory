@@ -11,8 +11,8 @@ export default {
     extend: {
       fontFamily: {
         body: ['Inter', 'sans-serif'],
-        headline: ['Space Grotesk', 'sans-serif'],
-        code: ['monospace'],
+        headline: ['"Space Grotesk"', 'sans-serif'],
+        code: ['"Courier New"', 'monospace'],
       },
       colors: {
         background: 'hsl(var(--background))',
@@ -95,5 +95,5 @@ export default {
       },
     },
   },
-  plugins: [require('tailwindcss-animate'), require('@tailwindcss/aspect-ratio')],
+  plugins: [require('tailwindcss-animate')],
 } satisfies Config;

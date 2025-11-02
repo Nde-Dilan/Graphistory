@@ -12,18 +12,6 @@ import { CAMEROON_HISTORY_DATA, CAMEROON_HISTORY_LINKS } from '@/lib/cameroon-hi
 
 type Mode = 'grid' | 'sphere' | 'name';
 
-type ThreeObjects = {
-  scene: THREE.Scene;
-  camera: THREE.PerspectiveCamera;
-  renderer: THREE.WebGLRenderer;
-  controls: OrbitControls;
-  imageMeshes: THREE.Mesh[];
-  linkLines: THREE.Line[];
-  raycaster: THREE.Raycaster;
-  mouse: THREE.Vector2;
-  hoveredMesh: THREE.Mesh | null;
-};
-
 const TWEEN = {
     Easing: { Quadratic: { Out: (k: number) => k * ( 2 - k ) } },
     _tweens: [] as any[],
@@ -98,11 +86,23 @@ const TWEEN = {
     }
 };
 
+type ThreeObjects = {
+  scene: THREE.Scene;
+  camera: THREE.PerspectiveCamera;
+  renderer: THREE.WebGLRenderer;
+  controls: OrbitControls;
+  imageMeshes: THREE.Group[];
+  linkLines: THREE.Line[];
+  raycaster: THREE.Raycaster;
+  mouse: THREE.Vector2;
+  hoveredMesh: THREE.Group | null;
+};
+
 const IMAGE_SIZE = 2;
 const TRANSITION_SPEED = 0.07;
-const GREEN = new THREE.Color('#00FF00'); // Brighter Green
-const YELLOW = new THREE.Color('#FFFF00');
-const WHITE = new THREE.Color('#FFFFFF');
+const LINE_COLOR = new THREE.Color('hsl(var(--secondary))'); 
+const HOVER_COLOR = new THREE.Color('hsl(var(--primary))');
+const FRAME_COLOR = new THREE.Color('#FFFFFF');
 
 export default function VisualExplorerClient({ events, links }: { events: CameroonEvent[], links: typeof CAMEROON_HISTORY_LINKS }) {
   const [mode, setMode] = useState<Mode>('sphere');
@@ -126,38 +126,29 @@ export default function VisualExplorerClient({ events, links }: { events: Camero
   }, [events]);
 
   const onImageSelect = useCallback((index: number) => {
-    if (mode === 'grid') {
-      handleModeChange('sphere', () => setSelectedEventIndex(index));
-    } else {
-      setSelectedEventIndex(index);
-    }
     setPrevMode(mode);
+    setSelectedEventIndex(index);
   }, [mode]);
   
-  const handleModeChange = (newMode: Mode, callback?: () => void) => {
-    setMode(newMode);
-    if (newMode === 'grid') {
-      setShow3D(false);
-    } else {
-      setShow3D(true);
-    }
-    if (callback) {
-      setTimeout(callback, 50);
+  const handleModeChange = (newMode: Mode) => {
+    if (newMode !== mode) {
+        setMode(newMode);
+        if (newMode === 'grid') {
+            setShow3D(false);
+        } else {
+            setShow3D(true);
+        }
     }
   };
-  
 
   const closeExplore = useCallback(() => {
-    const lastMode = prevMode;
     setSelectedEventIndex(null);
-
-    const returnMode = (lastMode && lastMode !== 'grid') ? lastMode : 'sphere';
-    
     if (prevMode === 'grid') {
-      handleModeChange('grid');
+      setShow3D(false);
+      setMode('grid');
     } else {
-      setMode(returnMode);
       setShow3D(true);
+      setMode(prevMode);
     }
   }, [prevMode]);
 
@@ -165,20 +156,17 @@ export default function VisualExplorerClient({ events, links }: { events: Camero
     if (!containerRef.current) return;
     const container = containerRef.current;
 
-    // Clean up previous renderer if it exists
     if (threeRef.current) {
-      threeRef.current.renderer.dispose();
-      while(container.firstChild){
-        container.removeChild(container.firstChild);
-      }
+        threeRef.current.renderer.dispose();
+        while(container.firstChild) {
+            container.removeChild(container.firstChild);
+        }
     }
     
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('hsl(0, 80%, 15%)'); // Deep Red
-
     const camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
     camera.position.z = 25;
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
     container.appendChild(renderer.domElement);
@@ -194,65 +182,62 @@ export default function VisualExplorerClient({ events, links }: { events: Camero
     const mouse = new THREE.Vector2();
 
     const loader = new THREE.TextureLoader();
-    const imageMeshes: THREE.Mesh[] = [];
-    let loadedCount = 0;
+    const imageMeshes: THREE.Group[] = [];
 
-    events.forEach((event, index) => {
-      loader.load(event.imageUrl, (texture) => {
-        texture.colorSpace = THREE.SRGBColorSpace;
-        const aspectRatio = texture.image.width / texture.image.height;
+    const imageLoadPromises = events.map((event, index) => {
+      return new Promise<void>((resolve) => {
+        loader.load(event.imageUrl, (texture) => {
+          texture.colorSpace = THREE.SRGBColorSpace;
+          const aspectRatio = texture.image.width / texture.image.height;
+          
+          const material = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide, transparent: true });
+          const imageMesh = new THREE.Mesh(new THREE.PlaneGeometry(IMAGE_SIZE * aspectRatio, IMAGE_SIZE), material);
+          imageMesh.name = "image";
+          
+          const frameMaterial = new THREE.MeshBasicMaterial({ color: FRAME_COLOR, side: THREE.DoubleSide, transparent: true, opacity: 1 });
+          const frameGroup = new THREE.Group();
         
-        const material = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide, transparent: true, color: WHITE });
-        
-        const frameMaterial = new THREE.MeshBasicMaterial({ color: WHITE, side: THREE.DoubleSide, transparent: true, opacity: 1 });
-        const frameGroup = new THREE.Group();
+          const frameThickness = 0.05;
+          const frameTop = new THREE.Mesh(new THREE.PlaneGeometry(IMAGE_SIZE * aspectRatio + frameThickness * 2, frameThickness), frameMaterial);
+          frameTop.position.y = IMAGE_SIZE / 2 + frameThickness / 2;
+          const frameBottom = new THREE.Mesh(new THREE.PlaneGeometry(IMAGE_SIZE * aspectRatio + frameThickness * 2, frameThickness), frameMaterial);
+          frameBottom.position.y = -IMAGE_SIZE / 2 - frameThickness / 2;
+          const frameLeft = new THREE.Mesh(new THREE.PlaneGeometry(frameThickness, IMAGE_SIZE), frameMaterial);
+          frameLeft.position.x = -(IMAGE_SIZE * aspectRatio) / 2 - frameThickness / 2;
+          const frameRight = new THREE.Mesh(new THREE.PlaneGeometry(frameThickness, IMAGE_SIZE), frameMaterial);
+          frameRight.position.x = (IMAGE_SIZE * aspectRatio) / 2 + frameThickness / 2;
 
-        const imageMesh = new THREE.Mesh(new THREE.PlaneGeometry(IMAGE_SIZE * aspectRatio, IMAGE_SIZE), material);
-        imageMesh.name = "image";
-        
-        const frameThickness = 0.05;
-        const frameTop = new THREE.Mesh(new THREE.PlaneGeometry(IMAGE_SIZE * aspectRatio + frameThickness * 2, frameThickness), frameMaterial);
-        frameTop.position.y = IMAGE_SIZE / 2 + frameThickness / 2;
-        
-        const frameBottom = new THREE.Mesh(new THREE.PlaneGeometry(IMAGE_SIZE * aspectRatio + frameThickness * 2, frameThickness), frameMaterial);
-        frameBottom.position.y = -IMAGE_SIZE / 2 - frameThickness / 2;
+          frameGroup.add(imageMesh);
+          frameGroup.add(frameTop);
+          frameGroup.add(frameBottom);
+          frameGroup.add(frameLeft);
+          frameGroup.add(frameRight);
 
-        const frameLeft = new THREE.Mesh(new THREE.PlaneGeometry(frameThickness, IMAGE_SIZE), frameMaterial);
-        frameLeft.position.x = -(IMAGE_SIZE * aspectRatio) / 2 - frameThickness / 2;
+          frameGroup.userData = {
+              id: event.id,
+              index,
+              frameMaterial,
+              baseColor: FRAME_COLOR.clone()
+          };
 
-        const frameRight = new THREE.Mesh(new THREE.PlaneGeometry(frameThickness, IMAGE_SIZE), frameMaterial);
-        frameRight.position.x = (IMAGE_SIZE * aspectRatio) / 2 + frameThickness / 2;
+          scene.add(frameGroup);
+          imageMeshes[index] = frameGroup;
+          resolve();
 
-        frameGroup.add(imageMesh);
-        frameGroup.add(frameTop);
-        frameGroup.add(frameBottom);
-        frameGroup.add(frameLeft);
-        frameGroup.add(frameRight);
-
-        frameGroup.userData.id = event.id;
-        frameGroup.userData.index = index;
-        frameGroup.userData.frameMaterial = frameMaterial;
-        frameGroup.userData.baseColor = WHITE.clone();
-
-        scene.add(frameGroup);
-        imageMeshes[index] = frameGroup;
-        
-        loadedCount++;
-        if (loadedCount === events.length) {
-          setIsLoading(false);
-        }
-      }, undefined, () => {
-        console.error(`Failed to load image: ${event.imageUrl}`);
-        loadedCount++;
-        if (loadedCount === events.length) {
-          setIsLoading(false);
-        }
+        }, undefined, () => {
+          console.error(`Failed to load image: ${event.imageUrl}`);
+          resolve();
+        });
       });
+    });
+
+    Promise.all(imageLoadPromises).then(() => {
+        setIsLoading(false);
     });
 
     const linkLines: THREE.Line[] = [];
     links.forEach(link => {
-      const material = new THREE.LineBasicMaterial({ color: GREEN, transparent: true, opacity: 0.3, linewidth: 1 });
+      const material = new THREE.LineBasicMaterial({ color: LINE_COLOR, transparent: true, opacity: 0.3, linewidth: 1 });
       const geometry = new THREE.BufferGeometry();
       const line = new THREE.Line(geometry, material);
       line.userData.sourceId = link.source;
@@ -281,7 +266,18 @@ export default function VisualExplorerClient({ events, links }: { events: Camero
 
         raycaster.setFromCamera(mouse, camera);
         const intersects = raycaster.intersectObjects(imageMeshes, true);
-        const intersectedMesh = intersects.length > 0 ? (intersects[0].object.parent as THREE.Mesh) : null;
+        const intersectedObject = intersects.length > 0 ? intersects[0].object : null;
+        let intersectedMesh: THREE.Group | null = null;
+        if (intersectedObject) {
+            let parent = intersectedObject.parent;
+            while(parent && !(parent instanceof THREE.Scene)) {
+                if (parent.userData.id) {
+                    intersectedMesh = parent as THREE.Group;
+                    break;
+                }
+                parent = parent.parent;
+            }
+        }
         
         if (threeRef.current.hoveredMesh !== intersectedMesh) {
             if (threeRef.current.hoveredMesh) {
@@ -293,7 +289,7 @@ export default function VisualExplorerClient({ events, links }: { events: Camero
             }
             if (intersectedMesh) {
                  new TWEEN.Tween(intersectedMesh.userData.frameMaterial)
-                  .to({ color: YELLOW }, 200)
+                  .to({ color: HOVER_COLOR }, 200)
                   .start();
                  new TWEEN.Tween(intersectedMesh.scale).to({x:1.1, y:1.1, z:1.1}, 200).start();
             }
@@ -314,31 +310,40 @@ export default function VisualExplorerClient({ events, links }: { events: Camero
 
     return () => {
       window.removeEventListener('resize', onWindowResize);
-      container.removeEventListener('mousemove', onMouseMove);
-      container.removeEventListener('click', onClick);
-      if (renderer.domElement.parentNode === container) {
-          container.removeChild(renderer.domElement);
+      if (container) {
+        container.removeEventListener('mousemove', onMouseMove);
+        container.removeEventListener('click', onClick);
       }
-      scene.traverse(object => {
-        if (object instanceof THREE.Mesh) {
-          object.geometry.dispose();
-          if (Array.isArray(object.material)) {
-            object.material.forEach(material => material.dispose());
-          } else {
-            object.material.dispose();
+      if (threeRef.current) {
+        threeRef.current.scene.traverse(object => {
+          if (object instanceof THREE.Mesh) {
+            object.geometry.dispose();
+            if (Array.isArray(object.material)) {
+              object.material.forEach(material => material.dispose());
+            } else if (object.material) {
+              object.material.dispose();
+            }
           }
-        }
-      });
-      renderer.dispose();
-      threeRef.current = undefined;
+        });
+        threeRef.current.renderer.dispose();
+        threeRef.current = undefined;
+      }
     };
-  }, [events, links, eventIdToIndexMap, onImageSelect]);
+  }, [events, links, onImageSelect]);
 
   useEffect(() => {
     let cleanup: (() => void) | undefined;
     if (show3D) {
       setIsLoading(true);
       cleanup = setupScene();
+    } else if (threeRef.current) {
+        // Clear scene if switching to 2D view
+        if (containerRef.current) {
+            while(containerRef.current.firstChild) {
+                containerRef.current.removeChild(containerRef.current.firstChild);
+            }
+        }
+        threeRef.current = undefined;
     }
     
     return () => {
@@ -372,10 +377,10 @@ export default function VisualExplorerClient({ events, links }: { events: Camero
             
             if (isHovered) {
                 material.opacity = 0.6 + 0.4 * Math.sin(time * 5);
-                material.color.set(YELLOW);
+                material.color.set(HOVER_COLOR);
             } else {
                 material.opacity = 0.3;
-                material.color.set(GREEN);
+                material.color.set(LINE_COLOR);
             }
         }
     });
@@ -401,40 +406,27 @@ export default function VisualExplorerClient({ events, links }: { events: Camero
   }, [events, show3D, selectedEventIndex, isLoading, eventIdToIndexMap]);
 
   useEffect(() => {
-    animate();
+    if (show3D) {
+      animate();
+    }
     return () => {
       if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
     };
-  }, [animate]);
+  }, [animate, show3D]);
 
   useEffect(() => {
     if (isLoading || !threeRef.current || !show3D) return;
     const { camera, controls, imageMeshes, linkLines } = threeRef.current;
     
-    let points: THREE.Vector3[] = [];
-    const sphereRadius = 15;
-    
-    if (selectedEventIndex !== null && imageMeshes[selectedEventIndex]) {
+    if (selectedEventIndex !== null) {
       const selectedMesh = imageMeshes[selectedEventIndex];
+      if (!selectedMesh) return;
       const camPos = selectedMesh.position.clone().add(new THREE.Vector3(0, 0, IMAGE_SIZE * 3));
       
       imageMeshes.forEach((mesh, i) => {
-        if (mesh) {
-          const image = mesh.getObjectByName('image') as THREE.Mesh<any, THREE.MeshBasicMaterial>;
-          if (image) {
-            new TWEEN.Tween(image.material)
-              .to({ opacity: i === selectedEventIndex ? 1 : 0 }, 500)
-              .start();
-          }
-          const frameMaterial = mesh.userData.frameMaterial as THREE.MeshBasicMaterial;
-            if (frameMaterial) {
-              new TWEEN.Tween(frameMaterial).to({ opacity: i === selectedEventIndex ? 1 : 0 }, 500).start();
-            }
-        }
+        if (mesh) mesh.visible = (i === selectedEventIndex);
       });
-      linkLines.forEach(line => {
-        new TWEEN.Tween(line.material).to({opacity: 0}, 500).start();
-      });
+      linkLines.forEach(line => { line.visible = false });
 
       new TWEEN.Tween(camera.position)
         .to(camPos, 500)
@@ -449,22 +441,12 @@ export default function VisualExplorerClient({ events, links }: { events: Camero
 
     } else { 
       controls.enabled = true;
-      imageMeshes.forEach(mesh => {
-        if (mesh) {
-            const image = mesh.getObjectByName('image') as THREE.Mesh<any, THREE.MeshBasicMaterial>;
-            if (image) {
-              new TWEEN.Tween(image.material).to({ opacity: 1 }, 500).start();
-            }
-             const frameMaterial = mesh.userData.frameMaterial as THREE.MeshBasicMaterial;
-            if (frameMaterial) {
-              new TWEEN.Tween(frameMaterial).to({ opacity: 1 }, 500).start();
-            }
-        }
-      });
-      linkLines.forEach(line => {
-        new TWEEN.Tween(line.material).to({opacity: 0.3}, 500).start();
-      });
+      imageMeshes.forEach(mesh => { if (mesh) mesh.visible = true; });
+      linkLines.forEach(line => { line.visible = true; });
 
+      let points: THREE.Vector3[] = [];
+      const sphereRadius = 15;
+      
       switch (mode) {
         case 'sphere':
           points = getSpherePoints(events.length, sphereRadius);
@@ -486,12 +468,12 @@ export default function VisualExplorerClient({ events, links }: { events: Camero
 
   return (
     <>
-      <div className={`absolute inset-0 transition-opacity duration-500 ${show3D && !isLoading ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} ref={containerRef} />
+      <div className={`absolute inset-0 transition-opacity duration-500 ${show3D ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} ref={containerRef} />
       
       {isLoading && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 z-30">
-              <Loader className="w-12 h-12 animate-spin text-accent" />
-              <p className="mt-4 text-lg font-headline text-white">Loading Visual Explorer...</p>
+              <Loader className="w-12 h-12 animate-spin text-primary" />
+              <p className="mt-4 text-lg font-headline text-primary">Loading Digital Memory...</p>
           </div>
       )}
 
