@@ -5,6 +5,7 @@ import { Button } from './ui/button';
 import { X, ChevronLeft, ChevronRight, Link } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
+import ImageDescription from './image-description';
 
 interface ExploreOverlayProps {
   event: CameroonEvent;
@@ -67,20 +68,23 @@ export default function ExploreOverlay({
             className="object-cover"
           />
         </div>
-        <Card className="w-full max-w-md bg-stone-800/80 border-green-900/50" style={{'--tw-bg-opacity': '0.8', backgroundColor: 'rgba(111, 78, 55, var(--tw-bg-opacity))'}}>
+        <Card className="w-full max-w-md bg-card/80 border-border">
           <CardHeader>
-            <CardTitle className="text-2xl font-headline text-white">{event.title}</CardTitle>
+            <CardTitle className="text-2xl font-headline text-accent">{event.title}</CardTitle>
             <p className="text-sm text-gray-300">{event.date}</p>
           </CardHeader>
           <CardContent>
-            <p className="text-gray-200 mb-6">{event.summary}</p>
+            <p className="text-gray-200 mb-4">{event.summary}</p>
+            <div className="mb-6">
+              <ImageDescription imageId={event.id} imageHint={event.imageHint}/>
+            </div>
             <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
               <Link className="h-4 w-4" />
               Context & Themes
             </h3>
             <div className="flex flex-wrap gap-2">
               {event.contextLinks.map((link) => (
-                <Badge key={link} variant="secondary" className="bg-green-800/50 text-white border-green-700">
+                <Badge key={link} variant="secondary" className="bg-secondary/50 text-white border-secondary">
                   {link}
                 </Badge>
               ))}
