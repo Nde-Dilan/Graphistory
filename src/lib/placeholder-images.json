@@ -1,0 +1,64 @@
+{
+  "placeholderImages": {
+    "sao": {
+      "url": "https://picsum.photos/seed/sao/600/400",
+      "hint": "terracotta artifacts"
+    },
+    "kanem": {
+      "url": "https://picsum.photos/seed/kanem/600/400",
+      "hint": "trans-saharan trade"
+    },
+    "slaveTrade": {
+      "url": "https://picsum.photos/seed/slaveTrade/600/400",
+      "hint": "slave ships"
+    },
+    "german": {
+      "url": "https://picsum.photos/seed/german/600/400",
+      "hint": "colonial administration"
+    },
+    "wwi": {
+      "url": "https://picsum.photos/seed/wwi/600/400",
+      "hint": "colonial soldiers"
+    },
+    "mandate": {
+      "url": "https://picsum.photos/seed/mandate/600/400",
+      "hint": "league nations"
+    },
+    "upc": {
+      "url": "https://picsum.photos/seed/upc/600/400",
+      "hint": "independence movement"
+    },
+    "independence": {
+      "url": "https://picsum.photos/seed/independence/600/400",
+      "hint": "flag celebration"
+    },
+    "reunification": {
+      "url": "https://picsum.photos/seed/reunification/600/400",
+      "hint": "political unity"
+    },
+    "unitary": {
+      "url": "https://picsum.photos/seed/unitary/600/400",
+      "hint": "state building"
+    },
+    "biya": {
+      "url": "https://picsum.photos/seed/biya/600/400",
+      "hint": "political leader"
+    },
+    "politics": {
+      "url": "https://picsum.photos/seed/politics/600/400",
+      "hint": "multiparty election"
+    },
+    "bakassi": {
+      "url": "https://picsum.photos/seed/bakassi/600/400",
+      "hint": "peninsula dispute"
+    },
+    "bokoHaram": {
+      "url": "https://picsum.photos/seed/bokoHaram/600/400",
+      "hint": "regional conflict"
+    },
+    "anglophone": {
+      "url": "https://picsum.photos/seed/anglophone/600/400",
+      "hint": "protest crisis"
+    }
+  }
+}
