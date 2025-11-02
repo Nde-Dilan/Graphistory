@@ -469,10 +469,10 @@ export default function VisualExplorerClient({ events }: { events: CameroonEvent
     <>
       <div className={`absolute inset-0 transition-opacity duration-500 ${show3D ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} ref={containerRef} />
       
-      {isLoading && (
+      {isLoading && show3D && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 z-30">
               <Loader className="w-12 h-12 animate-spin text-primary" />
-              <p className="mt-4 text-lg font-headline text-primary">Loading Digital Memory...</p>
+              <p className="mt-4 text-lg font-headline text-primary">CAMEROON OS Initializing...</p>
           </div>
       )}
 
