@@ -42,7 +42,7 @@ const NameIcon = () => (
 const navItems = [
   { mode: 'grid', icon: GridIcon, label: 'Grid' },
   { mode: 'sphere', icon: SphereIcon, label: 'Sphere' },
-  { mode: 'name', icon: NameIcon, label: 'Name' },
+  { mode: 'name', icon: NameIcon, label: 'CAMEROON OS' },
 ];
 
 export default function BottomNav({ activeMode, onModeChange }: BottomNavProps) {

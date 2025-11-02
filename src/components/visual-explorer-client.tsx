@@ -8,7 +8,7 @@ import GridView from './grid-view';
 import ExploreOverlay from './explore-overlay';
 import { getSpherePoints, getNamePoints } from '@/lib/three-helpers';
 import { Loader } from 'lucide-react';
-import { CAMEROON_HISTORY_DATA, CAMEROON_HISTORY_LINKS } from '@/lib/cameroon-history-data';
+import { CAMEROON_HISTORY_LINKS } from '@/lib/cameroon-history-data';
 
 type Mode = 'grid' | 'sphere' | 'name';
 
@@ -104,7 +104,7 @@ const LINE_COLOR = new THREE.Color('hsl(var(--secondary))');
 const HOVER_COLOR = new THREE.Color('hsl(var(--primary))');
 const FRAME_COLOR = new THREE.Color('#FFFFFF');
 
-export default function VisualExplorerClient({ events, links }: { events: CameroonEvent[], links: typeof CAMEROON_HISTORY_LINKS }) {
+export default function VisualExplorerClient({ events }: { events: CameroonEvent[] }) {
   const [mode, setMode] = useState<Mode>('sphere');
   const [selectedEventIndex, setSelectedEventIndex] = useState<number | null>(null);
   const [prevMode, setPrevMode] = useState<Mode>('sphere');
@@ -236,7 +236,7 @@ export default function VisualExplorerClient({ events, links }: { events: Camero
     });
 
     const linkLines: THREE.Line[] = [];
-    links.forEach(link => {
+    CAMEROON_HISTORY_LINKS.forEach(link => {
       const material = new THREE.LineBasicMaterial({ color: LINE_COLOR, transparent: true, opacity: 0.3, linewidth: 1 });
       const geometry = new THREE.BufferGeometry();
       const line = new THREE.Line(geometry, material);
@@ -329,7 +329,7 @@ export default function VisualExplorerClient({ events, links }: { events: Camero
         threeRef.current = undefined;
       }
     };
-  }, [events, links, onImageSelect]);
+  }, [events, onImageSelect]);
 
   useEffect(() => {
     let cleanup: (() => void) | undefined;
@@ -337,7 +337,6 @@ export default function VisualExplorerClient({ events, links }: { events: Camero
       setIsLoading(true);
       cleanup = setupScene();
     } else if (threeRef.current) {
-        // Clear scene if switching to 2D view
         if (containerRef.current) {
             while(containerRef.current.firstChild) {
                 containerRef.current.removeChild(containerRef.current.firstChild);

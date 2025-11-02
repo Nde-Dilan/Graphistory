@@ -21,18 +21,20 @@ export function getSpherePoints(count: number, radius: number): THREE.Vector3[] 
 
 export function getNamePoints(count: number): THREE.Vector3[] {
     const points: THREE.Vector3[] = [];
-    const word = "GEMINI";
+    const word = "CAMEROON";
     const pointsPerLetter = Math.floor(count / word.length);
-    const letterSpacing = 8;
+    const letterSpacing = 6;
     const totalWidth = (word.length - 1) * letterSpacing;
     const startX = -totalWidth / 2;
-    const scale = 4;
+    const scale = 3;
 
     const letterShapes: Record<string, [number, number][]> = {
-        'G': [[1,2],[0,1],[0,-1],[1,-2],[2,-2],[2,-1],[1,-1]],
-        'E': [[2,2],[0,2],[0,0],[1,0],[0,0],[0,-2],[2,-2]],
+        'C': [[2,1.5],[1,2],[0,1],[0,-1],[1,-2],[2,-1.5]],
+        'A': [[0,-2],[0,0],[1,2],[2,0],[2,-2],[0,-2],[2,0]],
         'M': [[0,-2],[0,2],[1,0],[2,2],[2,-2]],
-        'I': [[0,-2],[0,2]],
+        'E': [[2,2],[0,2],[0,0],[1.5,0],[0,0],[0,-2],[2,-2]],
+        'R': [[0,-2],[0,2],[2,1],[0,0],[2,-2]],
+        'O': [[1,2],[0,1],[0,-1],[1,-2],[2,-1],[2,1],[1,2]],
         'N': [[0,-2],[0,2],[2,-2],[2,2]],
     };
     
@@ -40,7 +42,7 @@ export function getNamePoints(count: number): THREE.Vector3[] {
 
     for (let i = 0; i < word.length; i++) {
         const char = word[i];
-        const letterPoints = (char === 'I' && i === 5) ? letterShapes['I'] : (letterShapes[char] || []);
+        const letterPoints = letterShapes[char] || [];
         const letterStartX = startX + i * letterSpacing;
         
         if (letterPoints.length === 0) continue;
@@ -61,24 +63,28 @@ export function getNamePoints(count: number): THREE.Vector3[] {
             pointsForThisLetter = count - pointIndex;
         }
 
+        let pointsAddedInLetter = 0;
         for (const segment of segments) {
-            const numPointsInSegment = Math.round((segment.length / totalLength) * pointsForThisLetter);
-            for(let k = 0; k < numPointsInSegment && pointIndex < count; k++) {
-                const t = k / (numPointsInSegment-1 || 1);
+            // Ensure at least one point per segment for sparse letters
+            const numPointsInSegment = Math.max(1, Math.round((segment.length / totalLength) * pointsForThisLetter));
+            for(let k = 0; k < numPointsInSegment && pointIndex < count && pointsAddedInLetter < pointsForThisLetter; k++) {
+                const t = (numPointsInSegment > 1) ? k / (numPointsInSegment - 1) : 0;
                 const point = new THREE.Vector2().lerpVectors(segment.start, segment.end, t);
                 points.push(new THREE.Vector3(
-                    (point.x * scale / 2) + letterStartX,
+                    (point.x * scale / 1.5) + letterStartX,
                     point.y * scale,
-                    0
+                    Math.random() * 2 - 1 // Add a little depth
                 ));
                 pointIndex++;
+                pointsAddedInLetter++;
             }
         }
     }
 
-    // If not enough points, fill up
+    // If not enough points, fill up the remaining
     while(pointIndex < count) {
-        points.push(points[points.length - 1] || new THREE.Vector3());
+        const lastPoint = points[points.length-1] || new THREE.Vector3();
+        points.push(lastPoint.clone().add(new THREE.Vector3(Math.random()-0.5, Math.random()-0.5, Math.random()-0.5)));
         pointIndex++;
     }
 
