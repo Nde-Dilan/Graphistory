@@ -22,23 +22,27 @@ export function getSpherePoints(count: number, radius: number): THREE.Vector3[] 
 export function getNamePoints(count: number): THREE.Vector3[] {
     const points: THREE.Vector3[] = [];
     const word = "CAMEROON";
-    const letterSpacing = 6;
+    const letterSpacing = 7;
     const scale = 3;
     
     const letterShapes: Record<string, [number, number][]> = {
         'C': [[2, 1.5], [1, 2], [0, 1], [0, -1], [1, -2], [2, -1.5]],
-        'A': [[0, -2], [0, 0], [1, 2], [2, 0], [2, -2]],
+        'A': [[0, -2], [1, 2], [2, -2], [1.5, 0], [0.5, 0]],
         'M': [[0, -2], [0, 2], [1, 0], [2, 2], [2, -2]],
         'E': [[2, 2], [0, 2], [0, 0], [1.5, 0], [0, 0], [0, -2], [2, -2]],
-        'R': [[0, -2], [0, 2], [2, 1], [0, 0], [2,-2]],
+        'R': [[0, -2], [0, 2], [2, 1], [1, 0], [2, -2]],
         'O': [[1, 2], [0, 1], [0, -1], [1, -2], [2, -1], [2, 1], [1, 2]],
-        'N': [[0,-2], [0,2], [2,-2], [2,2]],
+        'N': [[0, -2], [0, 2], [2, -2], [2, 2]],
     };
 
     const totalLetters = word.length;
-    const pointsPerLetter = Math.floor(count / totalLetters);
+    let pointsPerLetter = Math.floor(count / totalLetters);
     let remainder = count % totalLetters;
 
+    // Adjust for letters that need more points to look good
+    const complexity: Record<string, number> = {'M': 1.2, 'E': 1.2, 'R': 1.1, 'A': 1.1, 'C': 1, 'O': 1.2, 'N': 1};
+    const totalComplexity = Object.values(complexity).reduce((a, b) => a + b, 0);
+    
     const totalWidth = (totalLetters - 1) * letterSpacing;
     const startX = -totalWidth / 2;
 
@@ -51,10 +55,12 @@ export function getNamePoints(count: number): THREE.Vector3[] {
 
         const letterStartX = startX + i * letterSpacing;
         
-        let numPointsForChar = pointsPerLetter + (remainder > 0 ? 1 : 0);
+        let numPointsForChar = Math.floor((complexity[char] / totalComplexity) * count);
+        if (i === totalLetters - 1) {
+            numPointsForChar = count - pointIndex; // Assign remaining points to the last letter
+        }
         if (numPointsForChar <= 0) continue;
-        remainder--;
-
+        
         const path = new THREE.CatmullRomCurve3(
             letterPoints.map(p => new THREE.Vector3(p[0] * scale / 1.5 + letterStartX, p[1] * scale, 0))
         );
