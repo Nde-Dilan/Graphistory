@@ -329,7 +329,7 @@ export default function VisualExplorerClient({ events }: { events: CameroonEvent
         threeRef.current = undefined;
       }
     };
-  }, [events, onImageSelect]);
+  }, [events, onImageSelect, selectedEventIndex]);
 
   useEffect(() => {
     let cleanup: (() => void) | undefined;

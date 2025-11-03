@@ -22,12 +22,9 @@ export function getSpherePoints(count: number, radius: number): THREE.Vector3[] 
 export function getNamePoints(count: number): THREE.Vector3[] {
     const points: THREE.Vector3[] = [];
     const word = "CAMEROON";
-    const pointsPerLetter = Math.floor(count / word.length);
     const letterSpacing = 6;
-    const totalWidth = (word.length - 1) * letterSpacing;
-    const startX = -totalWidth / 2;
     const scale = 3;
-
+    
     const letterShapes: Record<string, [number, number][]> = {
         'C': [[2,1.5],[1,2],[0,1],[0,-1],[1,-2],[2,-1.5]],
         'A': [[0,-2],[0,0],[1,2],[2,0],[2,-2],[0,-2],[2,0]],
@@ -37,55 +34,42 @@ export function getNamePoints(count: number): THREE.Vector3[] {
         'O': [[1,2],[0,1],[0,-1],[1,-2],[2,-1],[2,1],[1,2]],
         'N': [[0,-2],[0,2],[2,-2],[2,2]],
     };
-    
+
+    const totalLetters = word.length;
+    const pointsPerLetter = Math.floor(count / totalLetters);
+    let remainder = count % totalLetters;
+
+    const totalWidth = (totalLetters - 1) * letterSpacing;
+    const startX = -totalWidth / 2;
+
     let pointIndex = 0;
 
-    for (let i = 0; i < word.length; i++) {
+    for (let i = 0; i < totalLetters; i++) {
         const char = word[i];
-        const letterPoints = letterShapes[char] || [];
+        const letterPoints = letterShapes[char];
+        if (!letterPoints) continue;
+
         const letterStartX = startX + i * letterSpacing;
         
-        if (letterPoints.length === 0) continue;
+        let numPointsForChar = pointsPerLetter + (remainder > 0 ? 1 : 0);
+        remainder--;
 
-        let totalLength = 0;
-        const segments: {start: THREE.Vector2, end: THREE.Vector2, length: number}[] = [];
+        const path = new THREE.CatmullRomCurve3(
+            letterPoints.map(p => new THREE.Vector3(p[0] * scale / 1.5 + letterStartX, p[1] * scale, 0))
+        );
 
-        for(let j = 0; j < letterPoints.length -1; j++) {
-            const p1 = new THREE.Vector2(...letterPoints[j]);
-            const p2 = new THREE.Vector2(...letterPoints[j+1]);
-            const length = p1.distanceTo(p2);
-            segments.push({start: p1, end: p2, length});
-            totalLength += length;
-        }
-
-        let pointsForThisLetter = pointsPerLetter;
-        if(i === word.length - 1) {
-            pointsForThisLetter = count - pointIndex;
-        }
-
-        let pointsAddedInLetter = 0;
-        for (const segment of segments) {
-            // Ensure at least one point per segment for sparse letters
-            const numPointsInSegment = Math.max(1, Math.round((segment.length / totalLength) * pointsForThisLetter));
-            for(let k = 0; k < numPointsInSegment && pointIndex < count && pointsAddedInLetter < pointsForThisLetter; k++) {
-                const t = (numPointsInSegment > 1) ? k / (numPointsInSegment - 1) : 0;
-                const point = new THREE.Vector2().lerpVectors(segment.start, segment.end, t);
-                points.push(new THREE.Vector3(
-                    (point.x * scale / 1.5) + letterStartX,
-                    point.y * scale,
-                    Math.random() * 2 - 1 // Add a little depth
-                ));
-                pointIndex++;
-                pointsAddedInLetter++;
-            }
+        const pathPoints = path.getPoints(numPointsForChar - 1);
+        
+        for (let j = 0; j < pathPoints.length && pointIndex < count; j++) {
+            points.push(pathPoints[j].add(new THREE.Vector3(0, 0, Math.random() * 2 - 1)));
+            pointIndex++;
         }
     }
 
-    // If not enough points, fill up the remaining
-    while(pointIndex < count) {
-        const lastPoint = points[points.length-1] || new THREE.Vector3();
-        points.push(lastPoint.clone().add(new THREE.Vector3(Math.random()-0.5, Math.random()-0.5, Math.random()-0.5)));
-        pointIndex++;
+    // Fallback to ensure we always have `count` points.
+    while (points.length < count) {
+        const lastPoint = points.length > 0 ? points[points.length - 1] : new THREE.Vector3();
+        points.push(lastPoint.clone().add(new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5)));
     }
 
     return points;
