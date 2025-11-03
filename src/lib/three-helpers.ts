@@ -1,3 +1,4 @@
+
 import * as THREE from 'three';
 
 // Golden Angle for sphere distribution
@@ -28,7 +29,7 @@ export function getNamePoints(count: number): THREE.Vector3[] {
     // Corrected and validated letter shapes. Each path has at least 2 points.
     const letterShapes: Record<string, [number, number][]> = {
         'C': [ [2, 1.5], [1, 2], [0, 1], [0, -1], [1, -2], [2, -1.5] ],
-        'A': [ [0, -2], [0.5, 0], [1, 2], [1.5, 0], [2, -2] ],
+        'A': [ [0, -2], [1, 2], [2, -2] ],
         'M': [ [0, -2], [0, 2], [1, 0], [2, 2], [2, -2] ],
         'E': [ [2, 2], [0, 2], [0, 0], [1.5, 0], [0, 0], [0, -2], [2, -2] ],
         'R': [ [0, -2], [0, 2], [2, 1], [0, 0], [2, -2] ],
