@@ -26,13 +26,13 @@ export function getNamePoints(count: number): THREE.Vector3[] {
     const scale = 3;
     
     const letterShapes: Record<string, [number, number][]> = {
-        'C': [[2,1.5],[1,2],[0,1],[0,-1],[1,-2],[2,-1.5]],
-        'A': [[0,-2],[0,0],[1,2],[2,0],[2,-2],[0,-2],[2,0]],
-        'M': [[0,-2],[0,2],[1,0],[2,2],[2,-2]],
-        'E': [[2,2],[0,2],[0,0],[1.5,0],[0,0],[0,-2],[2,-2]],
-        'R': [[0,-2],[0,2],[2,1],[0,0],[2,-2]],
-        'O': [[1,2],[0,1],[0,-1],[1,-2],[2,-1],[2,1],[1,2]],
-        'N': [[0,-2],[0,2],[2,-2],[2,2]],
+        'C': [[2, 1.5], [1, 2], [0, 1], [0, -1], [1, -2], [2, -1.5]],
+        'A': [[0, -2], [0, 0], [1, 2], [2, 0], [2, -2]],
+        'M': [[0, -2], [0, 2], [1, 0], [2, 2], [2, -2]],
+        'E': [[2, 2], [0, 2], [0, 0], [1.5, 0], [0, 0], [0, -2], [2, -2]],
+        'R': [[0, -2], [0, 2], [2, 1], [0, 0], [2,-2]],
+        'O': [[1, 2], [0, 1], [0, -1], [1, -2], [2, -1], [2, 1], [1, 2]],
+        'N': [[0,-2], [0,2], [2,-2], [2,2]],
     };
 
     const totalLetters = word.length;
@@ -47,11 +47,12 @@ export function getNamePoints(count: number): THREE.Vector3[] {
     for (let i = 0; i < totalLetters; i++) {
         const char = word[i];
         const letterPoints = letterShapes[char];
-        if (!letterPoints) continue;
+        if (!letterPoints || letterPoints.length < 2) continue;
 
         const letterStartX = startX + i * letterSpacing;
         
         let numPointsForChar = pointsPerLetter + (remainder > 0 ? 1 : 0);
+        if (numPointsForChar <= 0) continue;
         remainder--;
 
         const path = new THREE.CatmullRomCurve3(
