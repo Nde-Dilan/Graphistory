@@ -1,47 +1,41 @@
-'use client';
-import { generateImageDescription } from '@/ai/flows/image-description-generator';
-import { useEffect, useState } from 'react';
-import { Skeleton } from './ui/skeleton';
+"use client";
+import { useEffect, useState } from "react";
+
+import { Skeleton } from "./ui/skeleton";
 
 interface ImageDescriptionProps {
   imageId: string;
   imageHint: string;
 }
 
-export default function ImageDescription({ imageId, imageHint }: ImageDescriptionProps) {
-  const [description, setDescription] = useState('');
+export default function ImageDescription({
+  imageId,
+  imageHint,
+}: ImageDescriptionProps) {
+  const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Use a dummy description to avoid server/Ai calls during dev which can trigger
+    // Server Actions / forwarded header issues in some environments.
     let isMounted = true;
-    async function getDescription() {
-      if (!isMounted) return;
-      setLoading(true);
-      setDescription('');
-      try {
-        const result = await generateImageDescription({ imageId: imageHint });
-        if (isMounted) {
-            setDescription(result.description);
-        }
-      } catch (error) {
-        console.error('Failed to generate description:', error);
-        if (isMounted) {
-            setDescription('A beautiful image from the collection.');
-        }
-      } finally {
-        if (isMounted) {
-            setLoading(false);
-        }
-      }
-    }
+    setLoading(true);
+    setDescription("");
 
-    if (imageId) {
-      getDescription();
-    }
-    
+    const hintText = imageHint || imageId || "an important historical moment";
+    const desc = `A historic image showing ${hintText}.`;
+
+    const t = setTimeout(() => {
+      if (isMounted) {
+        setDescription(desc);
+        setLoading(false);
+      }
+    }, 250);
+
     return () => {
-        isMounted = false;
-    }
+      isMounted = false;
+      clearTimeout(t);
+    };
   }, [imageId, imageHint]);
 
   if (loading) {

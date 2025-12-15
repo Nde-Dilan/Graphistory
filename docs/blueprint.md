@@ -1,4 +1,4 @@
-# **App Name**: Visual Explorer
+# **App Name**: Graphistory
 
 ## Core Features:
 
